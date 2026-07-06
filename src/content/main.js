@@ -122,10 +122,8 @@
 
   const API_REFRESH_MIN_INTERVAL = 30000;
   const LOGO_SIZE = 128;
-  const FLOATING_LAYER_CLASS = "silroom-chatwork-floating-open";
   const MODAL_LAYER_CLASS = "silroom-chatwork-modal-open";
-  const FLOATING_LAYER_NAME_RE =
-    /(modal|dialog|preview|viewer|lightbox|popover|tooltip|emoji|mention|suggest|autocomplete|balloon|overlay)/i;
+  const MODAL_LAYER_NAME_RE = /(modal|dialog|preview|viewer|lightbox|overlay)/i;
 
   const isChatworkPage = () => location.hostname.endsWith("chatwork.com");
 
@@ -445,14 +443,14 @@
       node.getAttribute?.("data-cwui-component") || "",
     ].join(" ");
 
-  const classifyFloatingLayer = (node, shellRight) => {
+  const isChatworkModalLayer = (node, shellRight) => {
     if (!(node instanceof HTMLElement) || node === document.body || node === document.documentElement) {
-      return null;
+      return false;
     }
 
     const root = document.getElementById(APP.rootId);
     if (root && (node === root || root.contains(node))) {
-      return null;
+      return false;
     }
 
     const style = getComputedStyle(node);
@@ -461,7 +459,7 @@
       style.visibility === "hidden" ||
       Number.parseFloat(style.opacity || "1") === 0
     ) {
-      return null;
+      return false;
     }
 
     const rect = node.getBoundingClientRect();
@@ -475,41 +473,51 @@
       rect.left >= viewportWidth ||
       rect.top >= viewportHeight
     ) {
-      return null;
+      return false;
     }
 
     const signature = getNodeSignature(node);
     const role = node.getAttribute("role");
     const semanticModal = role === "dialog" || node.getAttribute("aria-modal") === "true";
-    const namedFloatingLayer = FLOATING_LAYER_NAME_RE.test(signature);
+    const namedModalLayer = MODAL_LAYER_NAME_RE.test(signature);
     const zIndex = Number.parseInt(style.zIndex, 10);
-    const positionedAboveBase =
+    const positionedAsLayer =
       style.position === "fixed" ||
-      (style.position === "absolute" && Number.isFinite(zIndex) && zIndex > 0);
-    const largeLayer =
-      rect.width >= viewportWidth * 0.32 ||
-      rect.height >= viewportHeight * 0.22 ||
-      (rect.width >= 360 && rect.height >= 180);
-    const unnamedFixedLayer = style.position === "fixed" && largeLayer;
-    const isFloatingLayer = semanticModal || namedFloatingLayer || unnamedFixedLayer;
+      node.tagName === "DIALOG" ||
+      semanticModal ||
+      (style.position === "absolute" && Number.isFinite(zIndex) && zIndex >= 100);
+    const largeModal =
+      rect.width >= Math.min(420, viewportWidth * 0.42) &&
+      rect.height >= Math.min(260, viewportHeight * 0.34) &&
+      rect.width >= viewportWidth * 0.28 &&
+      rect.height >= viewportHeight * 0.2;
+    const mediaNodes = [
+      ...(node.matches("img, video, canvas, iframe") ? [node] : []),
+      ...node.querySelectorAll("img, video, canvas, iframe"),
+    ];
+    const hasLargeMediaPreview = mediaNodes.some((media) => {
+      const mediaRect = media.getBoundingClientRect();
+      return mediaRect.width >= 320 && mediaRect.height >= 160;
+    });
 
-    if (!isFloatingLayer || !positionedAboveBase) {
-      return null;
+    if (!positionedAsLayer || !largeModal || (!semanticModal && !namedModalLayer && !hasLargeMediaPreview)) {
+      return false;
     }
 
     const overlapsSilroomArea = rect.left < shellRight && rect.right > 0;
-    const crossesIntoChatArea = rect.right > shellRight + 8 && rect.bottom > 48;
-    const modalLike = semanticModal || (largeLayer && (overlapsSilroomArea || rect.left < viewportWidth * 0.25));
+    const crossesIntoChatArea = rect.right > shellRight + 120 && rect.bottom > 140;
+    const centeredModal =
+      rect.left < viewportWidth * 0.38 &&
+      rect.right > viewportWidth * 0.55 &&
+      rect.top < viewportHeight * 0.26 &&
+      rect.bottom > viewportHeight * 0.5;
 
-    return {
-      floating: crossesIntoChatArea || overlapsSilroomArea,
-      modal: modalLike && crossesIntoChatArea,
-    };
+    return crossesIntoChatArea && (overlapsSilroomArea || centeredModal);
   };
 
-  const readFloatingLayerState = () => {
+  const hasChatworkModalLayer = () => {
     if (!settings.enabled || !document.body) {
-      return { floating: false, modal: false };
+      return false;
     }
 
     const shellRect = document.getElementById(APP.shellId)?.getBoundingClientRect();
@@ -517,29 +525,18 @@
       shellRect?.right ||
       Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--silroom-shell-width")) ||
       360;
-    let floating = false;
-    let modal = false;
 
     for (const node of document.body.getElementsByTagName("*")) {
-      const layer = classifyFloatingLayer(node, shellRight);
-      if (!layer) {
-        continue;
-      }
-
-      floating = floating || layer.floating;
-      modal = modal || layer.modal;
-      if (modal) {
-        break;
+      if (isChatworkModalLayer(node, shellRight)) {
+        return true;
       }
     }
 
-    return { floating, modal };
+    return false;
   };
 
   const updateFloatingLayerState = () => {
-    const { floating, modal } = readFloatingLayerState();
-    document.documentElement.classList.toggle(FLOATING_LAYER_CLASS, floating);
-    document.documentElement.classList.toggle(MODAL_LAYER_CLASS, modal);
+    document.documentElement.classList.toggle(MODAL_LAYER_CLASS, hasChatworkModalLayer());
   };
 
   const scheduleFloatingLayerCheck = (delay = 80) => {

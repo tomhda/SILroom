@@ -116,6 +116,15 @@ if (!contentSource.includes("const usesQuickFilter = (spaceKey) => !isAttentionS
   throw new Error("Attention space must not stack quick filters.");
 }
 
+const modalLayerPattern = contentSource.match(/const MODAL_LAYER_NAME_RE = (\/.*?\/i);/);
+if (!modalLayerPattern) {
+  throw new Error("Chatwork modal layer matcher is missing.");
+}
+
+if (/(tooltip|popover|emoji|mention|suggest|autocomplete|balloon)/.test(modalLayerPattern[1])) {
+  throw new Error("Hover and composer helpers must not be treated as modal layers.");
+}
+
 if (!contentSource.includes("const targetRooms = isWorkspaceSpace(spaceKey) ? cachedRooms : liveRooms;")) {
   throw new Error("Smart space badges must not fall back to stale cached rooms.");
 }
@@ -139,7 +148,6 @@ for (const token of [
   "syncNativeWorkspaceIfNeeded(nextSpace)",
   "setupStructureObserver()",
   "setupFloatingLayerObserver()",
-  "silroom-chatwork-floating-open",
   "silroom-chatwork-modal-open",
   "scheduleInteractiveApiRefresh(250)",
 ]) {
@@ -171,10 +179,6 @@ if (!Number.isFinite(silroomZIndex) || silroomZIndex > 1000) {
 
 if (!css.includes(":root.silroom-enabled #_chatSendArea:hover")) {
   throw new Error("Chatwork composer hover/focus stacking rule is missing.");
-}
-
-if (!css.includes(":root.silroom-chatwork-floating-open #silroom-shell")) {
-  throw new Error("Chatwork floating overlay yield rule is missing.");
 }
 
 if (!css.includes(":root.silroom-chatwork-modal-open #silroom-shell")) {

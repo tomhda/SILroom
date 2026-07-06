@@ -69,17 +69,12 @@
   z-index: calc(var(--silroom-z-index) + 10);
 }
 
-:root.silroom-chatwork-floating-open #silroom-root,
-:root.silroom-chatwork-floating-open #silroom-shell,
-:root.silroom-chatwork-floating-open #silroom-overview-tab {
-  pointer-events: none;
-  z-index: 0;
-}
-
 :root.silroom-chatwork-modal-open #silroom-shell,
 :root.silroom-chatwork-modal-open #silroom-overview-tab {
   opacity: 0;
+  pointer-events: none;
   visibility: hidden;
+  z-index: 0;
 }
 
 #silroom-root {
