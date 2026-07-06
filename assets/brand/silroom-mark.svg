@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="SILroom">
+  <rect x="12" y="12" width="104" height="104" rx="26" fill="#102033"/>
+  <path d="M26 61 64 28l38 33v45H26V61z" fill="#F2E8D9"/>
+  <path d="M20 62l44-38 44 38" fill="none" stroke="#7CA7FF" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="43" y="63" width="42" height="48" rx="17" fill="#070B10"/>
+  <ellipse cx="44.5" cy="78" rx="11.5" ry="23" fill="#070B10"/>
+  <ellipse cx="83.5" cy="78" rx="11.5" ry="23" fill="#070B10"/>
+  <ellipse cx="64" cy="58" rx="17" ry="16" fill="#070B10"/>
+  <rect x="39" y="88" width="50" height="22" rx="12" fill="#070B10"/>
+  <ellipse cx="59" cy="59" rx="2.5" ry="3" fill="#F2E8D9"/>
+  <ellipse cx="70" cy="59" rx="2.5" ry="3" fill="#F2E8D9"/>
+  <path d="M60 68c2.5 2.5 5.5 2.5 8 0" fill="none" stroke="#F2E8D9" stroke-width="3" stroke-linecap="round"/>
+  <path d="M53 91l6 3h10l6-3" fill="none" stroke="#2CCB93" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

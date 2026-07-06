@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SILroom</title>
+    <link rel="stylesheet" href="styles/popup.css">
+  </head>
+  <body>
+    <main class="popup">
+      <header class="popup__header">
+        <div>
+          <h1>SILroom</h1>
+          <p>Chatwork room cockpit</p>
+        </div>
+      </header>
+
+      <label class="popup__switch">
+        <span>
+          <strong>拡張UI</strong>
+          <small>左スペースバーと整理済み一覧を表示</small>
+        </span>
+        <input id="enabled" type="checkbox">
+      </label>
+
+      <label class="popup__switch">
+        <span>
+          <strong>概要欄を閉じる</strong>
+          <small>本文エリアを広く使う</small>
+        </span>
+        <input id="overviewCollapsed" type="checkbox">
+      </label>
+
+      <section class="popup__section popup__api">
+        <label class="popup__switch popup__switch--inside">
+          <span>
+            <strong>API補助</strong>
+            <small>DM・通知・固定・更新順の精度を上げる</small>
+          </span>
+          <input id="apiAssistEnabled" type="checkbox">
+        </label>
+        <label for="apiToken">Chatwork APIキー / APIトークン</label>
+        <input id="apiToken" type="password" autocomplete="off" placeholder="ここに貼り付け">
+        <div class="popup__actions">
+          <button id="saveApi" type="button">保存してON</button>
+          <button id="testApi" type="button">接続テスト</button>
+          <button id="clearApi" type="button">削除</button>
+        </div>
+        <p class="popup__hint">Chrome拡張アイコンからこの画面を開いて入力します。</p>
+        <p id="apiStatus" class="popup__status"></p>
+      </section>
+
+      <section class="popup__section">
+        <label for="defaultSpace">初期スペース</label>
+        <select id="defaultSpace">
+          <option value="attention">自分宛</option>
+          <option value="all">全体</option>
+          <option value="dm">DM</option>
+          <option value="unclassified">未分類</option>
+          <option value="fixed">固定</option>
+        </select>
+      </section>
+
+      <p class="popup__note">送信・編集・タスク作成には触れません。</p>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

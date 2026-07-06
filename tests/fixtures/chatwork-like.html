@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Chatwork Fixture</title>
+    <style>
+      html,
+      body {
+        background: #111827;
+        color: #f8fafc;
+        font-family: Meiryo, sans-serif;
+        height: 100%;
+        margin: 0;
+      }
+
+      #_header {
+        align-items: center;
+        background: #172238;
+        border-bottom: 1px solid #2a3a55;
+        display: flex;
+        font-size: 18px;
+        font-weight: 700;
+        height: 48px;
+        padding: 0 18px;
+      }
+
+      #_content {
+        height: calc(100% - 48px);
+        position: relative;
+      }
+
+      #_sideContent {
+        background: #0e1726;
+        border-right: 1px solid #2a3a55;
+        bottom: 0;
+        left: 0;
+        position: absolute;
+        top: 0;
+        width: 300px;
+      }
+
+      #sidebarSwitch {
+        align-items: center;
+        border-bottom: 1px solid #2a3a55;
+        display: flex;
+        gap: 16px;
+        height: 49px;
+        padding: 0 14px;
+      }
+
+      #_roomListArea {
+        bottom: 0;
+        left: 0;
+        overflow: auto;
+        position: absolute;
+        right: 0;
+        top: 49px;
+      }
+
+      .fixture-category {
+        align-items: center;
+        color: #dbeafe;
+        display: flex;
+        height: 40px;
+        padding-left: 14px;
+      }
+
+      #_roomListArea ul {
+        list-style: none;
+        margin: 0;
+        padding: 0 0 24px;
+      }
+
+      #_roomListArea li[role="tab"] {
+        align-items: center;
+        display: flex;
+        gap: 12px;
+        height: 46px;
+        padding: 0 16px;
+      }
+
+      #_roomListArea li[role="tab"][aria-selected="true"] {
+        background: #253a63;
+      }
+
+      #_roomListArea img {
+        border-radius: 50%;
+        height: 28px;
+        width: 28px;
+      }
+
+      .fixture-title {
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .fixture-badge {
+        align-items: center;
+        border-radius: 999px;
+        color: #07101e;
+        display: inline-flex;
+        font-size: 11px;
+        font-weight: 900;
+        height: 20px;
+        justify-content: center;
+        min-width: 20px;
+      }
+
+      .fixture-badge--mention {
+        background: #22c98b;
+      }
+
+      .fixture-badge--unread {
+        background: #63a4ff;
+      }
+
+      #_mainContent {
+        bottom: 0;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 300px;
+        grid-template-rows: 49px minmax(0, 1fr);
+        left: 300px;
+        position: absolute;
+        right: 0;
+        top: 0;
+      }
+
+      .roomMainContent__roomHeader {
+        align-items: center;
+        background: #1b2943;
+        border-bottom: 1px solid #2a3a55;
+        display: flex;
+        grid-column: 1 / -1;
+        padding: 0 16px;
+      }
+
+      .roomMainContent__currentSelectedRoom {
+        min-width: 0;
+        position: relative;
+      }
+
+      #_chatContent {
+        background: #111827;
+        height: 100%;
+        min-width: 0;
+        padding: 28px;
+      }
+
+      #_chatSendArea {
+        background: #172238;
+        border-top: 1px solid #2a3a55;
+        bottom: 0;
+        height: 96px;
+        left: 0;
+        position: absolute;
+        right: 0;
+      }
+
+      #_subContent {
+        background: #0e1726;
+        border-left: 1px solid #2a3a55;
+        grid-column: 2;
+        grid-row: 2;
+      }
+
+      #_subContentArea {
+        height: 100%;
+        overflow: auto;
+        padding: 18px;
+      }
+    </style>
+  </head>
+  <body class="ja dark">
+    <div id="_header">Chatwork</div>
+    <div id="_content">
+      <div id="_sideContent" class="roomListContainer">
+        <div id="sidebarSwitch">チャット 自分宛て ブックマーク</div>
+        <div id="_roomListArea" class="roomListWithSwitch">
+          <div class="fixture-category" role="button">サンプルA</div>
+          <div class="fixture-category" role="button">サンプルB</div>
+          <div class="fixture-category" role="button">サンプルC</div>
+          <div>カテゴリー未分類のチャット</div>
+          <ul>
+            <li id="111111111" role="tab" aria-label="【SAMPLE】サンプル共有ルーム" aria-selected="true">
+              <img src="https://appdata.chatwork.com/icon/ico_group.png" alt="">
+              <span class="fixture-title">【SAMPLE】サンプル共有ルーム</span>
+              <span class="fixture-badge fixture-badge--mention">2</span>
+            </li>
+            <li id="222222222" role="tab" aria-label="【SAMPLE】制作チェック">
+              <img src="https://appdata.chatwork.com/icon/ico_group.png" alt="">
+              <span class="fixture-title">【SAMPLE】制作チェック</span>
+              <span class="fixture-badge fixture-badge--unread">4</span>
+            </li>
+            <li id="294514502" role="tab" aria-label="サンプル 太郎">
+              <img src="https://appdata.chatwork.com/avatar/user-a.png" alt="">
+              <span class="fixture-title">サンプル 太郎</span>
+            </li>
+            <li id="294514505" role="tab" aria-label="デモ 花子">
+              <img src="https://appdata.chatwork.com/avatar/user-b.png" alt="">
+              <span class="fixture-title">デモ 花子</span>
+              <span class="fixture-badge fixture-badge--mention">1</span>
+            </li>
+            <li id="333333333" role="tab" aria-label="サンプル日報">
+              <img src="https://appdata.chatwork.com/icon/ico_group.png" alt="">
+              <span class="fixture-title">サンプル日報</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div id="_mainContent" class="roomMainContent">
+        <div class="roomMainContent__roomHeader">【SAMPLE】サンプル共有ルーム</div>
+        <div class="roomMainContent__currentSelectedRoom">
+          <div id="CurrentSelectedRoom">
+            <div id="_chatContent">本文エリア</div>
+            <div id="_chatSendArea">送信エリア</div>
+          </div>
+        </div>
+        <div id="_subContent" class="roomInformationContentContainer">
+          <div id="_subContentArea" class="roomInformationContent">
+            <h2 id="_subRoomInfoTitle">概要</h2>
+            <p>予算、リンク、タスクなど</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

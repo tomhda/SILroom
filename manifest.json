@@ -1,0 +1,56 @@
+{
+  "manifest_version": 3,
+  "name": "SILroom",
+  "version": "0.1.0",
+  "description": "Chatworkのチャットルーム一覧をスペース化し、1:1チャットと概要欄を扱いやすくするChrome拡張。",
+  "permissions": [
+    "storage"
+  ],
+  "icons": {
+    "16": "assets/icons/icon-16.png",
+    "32": "assets/icons/icon-32.png",
+    "48": "assets/icons/icon-48.png",
+    "128": "assets/icons/icon-128.png"
+  },
+  "host_permissions": [
+    "https://www.chatwork.com/*",
+    "https://api.chatwork.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.chatwork.com/*"
+      ],
+      "js": [
+        "src/content/main.js"
+      ],
+      "css": [
+        "styles/silroom.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "assets/icons/*.svg"
+      ],
+      "matches": [
+        "https://www.chatwork.com/*"
+      ]
+    }
+  ],
+  "action": {
+    "default_title": "SILroom",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "assets/icons/icon-16.png",
+      "32": "assets/icons/icon-32.png",
+      "48": "assets/icons/icon-48.png",
+      "128": "assets/icons/icon-128.png"
+    }
+  }
+}

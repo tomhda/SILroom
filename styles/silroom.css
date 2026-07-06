@@ -1,0 +1,953 @@
+:root {
+  --silroom-rail-width: 58px;
+  --silroom-panel-current-width: 302px;
+  --silroom-panel-expanded-width: 302px;
+  --silroom-room-rail-width: 54px;
+  --silroom-shell-width: calc(var(--silroom-rail-width) + var(--silroom-panel-current-width));
+  --silroom-panel-width: calc(var(--silroom-shell-width) - var(--silroom-rail-width));
+  --silroom-bg: #0b1220;
+  --silroom-bg-2: #111b2d;
+  --silroom-surface: #17243a;
+  --silroom-surface-2: #20314d;
+  --silroom-border: rgba(167, 191, 229, 0.2);
+  --silroom-border-strong: rgba(167, 191, 229, 0.36);
+  --silroom-text: #eef5ff;
+  --silroom-muted: #9fb3d1;
+  --silroom-dim: #6f86aa;
+  --silroom-mention: #22c98b;
+  --silroom-unread: #63a4ff;
+  --silroom-focus: #6aa7ff;
+  --silroom-danger: #f97066;
+  /* Stay above the room list, but below Chatwork composer menus. */
+  --silroom-z-index: 30;
+}
+
+:root.silroom-enabled #_sideContent {
+  width: var(--silroom-shell-width) !important;
+}
+
+:root.silroom-enabled,
+:root.silroom-enabled body {
+  overflow-x: hidden !important;
+}
+
+:root.silroom-enabled #_sideContent > * {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+:root.silroom-enabled #_mainContent {
+  left: var(--silroom-shell-width) !important;
+  width: calc(100% - var(--silroom-shell-width)) !important;
+}
+
+:root.silroom-overview-collapsed #_subContent,
+:root.silroom-overview-collapsed .roomMainContent__roomInfo,
+:root.silroom-overview-collapsed #_subContentArea {
+  display: none !important;
+}
+
+:root.silroom-overview-collapsed #_mainContent {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+:root.silroom-overview-collapsed .roomMainContent__currentSelectedRoom,
+:root.silroom-overview-collapsed #CurrentSelectedRoom,
+:root.silroom-overview-collapsed #_chatContent,
+:root.silroom-overview-collapsed #_chatSendArea {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+:root.silroom-overview-collapsed .roomMainContent__currentSelectedRoom {
+  grid-column: 1 / -1 !important;
+}
+
+:root.silroom-enabled #_chatSendArea:hover,
+:root.silroom-enabled #_chatSendArea:focus-within {
+  position: relative;
+  z-index: calc(var(--silroom-z-index) + 10);
+}
+
+#silroom-root {
+  color: var(--silroom-text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Meiryo, sans-serif;
+  font-size: 13px;
+  line-height: 1.35;
+  position: relative;
+  z-index: var(--silroom-z-index);
+}
+
+#silroom-root * {
+  box-sizing: border-box;
+}
+
+#silroom-shell {
+  background: var(--silroom-bg);
+  border-right: 1px solid var(--silroom-border);
+  bottom: 0;
+  box-shadow: 12px 0 26px rgba(0, 0, 0, 0.24);
+  display: flex;
+  left: 0;
+  overflow: visible;
+  position: fixed;
+  top: 48px;
+  width: var(--silroom-shell-width);
+  z-index: var(--silroom-z-index);
+}
+
+#silroom-shell.is-paused {
+  opacity: 0.72;
+}
+
+.silroom-rail {
+  background: #07101e;
+  border-right: 1px solid var(--silroom-border);
+  display: flex;
+  flex: 0 0 var(--silroom-rail-width);
+  flex-direction: column;
+  min-width: var(--silroom-rail-width);
+  overflow: visible;
+  padding: 10px 7px 8px;
+  position: relative;
+  width: var(--silroom-rail-width);
+  z-index: 2;
+}
+
+.silroom-rail:hover,
+.silroom-rail:focus-within {
+  z-index: calc(var(--silroom-z-index) + 1);
+}
+
+.silroom-railHoverLabel {
+  background: rgba(17, 27, 45, 0.96);
+  border: 1px solid var(--silroom-border-strong);
+  border-radius: 7px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.3);
+  color: var(--silroom-text);
+  font-size: 12px;
+  font-weight: 800;
+  left: calc(100% + 8px);
+  line-height: 1.2;
+  max-width: 210px;
+  opacity: 0;
+  overflow: hidden;
+  padding: 7px 9px;
+  pointer-events: none;
+  position: absolute;
+  text-overflow: ellipsis;
+  top: var(--silroom-hover-label-top, 0);
+  transform: translate(-4px, -50%);
+  transition: opacity 120ms ease, transform 120ms ease;
+  white-space: nowrap;
+  z-index: calc(var(--silroom-z-index) + 3);
+}
+
+.silroom-railHoverLabel.is-visible {
+  opacity: 1;
+  transform: translate(0, -50%);
+}
+
+.silroom-railGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.silroom-railGroupWorkspaces {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 1px;
+  scrollbar-width: none;
+}
+
+.silroom-railGroupWorkspaces::-webkit-scrollbar {
+  height: 0;
+  width: 0;
+}
+
+.silroom-workspaceDropZone {
+  border-radius: 999px;
+  flex: 0 0 7px;
+  margin: -2px 7px;
+  transition: background 100ms ease, flex-basis 100ms ease;
+}
+
+.silroom-workspaceDropZone.is-active {
+  background: var(--silroom-focus);
+  box-shadow: 0 0 0 2px rgba(106, 167, 255, 0.18);
+  flex-basis: 12px;
+}
+
+.silroom-railDivider {
+  background: var(--silroom-border);
+  flex: 0 0 1px;
+  margin: 8px 4px;
+}
+
+.silroom-railFooter {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  justify-content: center;
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+.silroom-railFooter .silroom-iconButton {
+  background: transparent;
+  border-color: transparent;
+  height: 38px;
+  width: 38px;
+}
+
+.silroom-railItem,
+.silroom-iconButton,
+.silroom-filterButton,
+.silroom-dmToggle,
+.silroom-overviewTab {
+  appearance: none;
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.silroom-railItem {
+  align-items: center;
+  background: transparent;
+  border-radius: 10px;
+  color: var(--silroom-muted);
+  display: flex;
+  height: 44px;
+  justify-content: center;
+  min-width: 0;
+  padding: 0 4px;
+  position: relative;
+  text-align: left;
+  width: 100%;
+}
+
+.silroom-railItem:hover,
+.silroom-railItem:focus-visible {
+  background: rgba(118, 163, 255, 0.12);
+  color: var(--silroom-text);
+  outline: none;
+}
+
+.silroom-railItem.is-dragging {
+  cursor: grabbing;
+  opacity: 0.48;
+}
+
+.silroom-railItem.is-drop-before::before,
+.silroom-railItem.is-drop-after::after {
+  background: var(--silroom-focus);
+  border-radius: 999px;
+  box-shadow: 0 0 0 2px rgba(106, 167, 255, 0.18);
+  content: "";
+  height: 3px;
+  left: 7px;
+  position: absolute;
+  right: 7px;
+  z-index: 2;
+}
+
+.silroom-railItem.is-drop-before::before {
+  top: -5px;
+}
+
+.silroom-railItem.is-drop-after::after {
+  bottom: -5px;
+}
+
+.silroom-railItem.is-selected {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--silroom-text);
+}
+
+.silroom-railIcon {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 11px;
+  display: flex;
+  flex: 0 0 34px;
+  font-size: 11px;
+  font-weight: 800;
+  height: 34px;
+  justify-content: center;
+  letter-spacing: 0;
+  overflow: hidden;
+  width: 34px;
+}
+
+.silroom-railItem.is-selected .silroom-railIcon {
+  background: rgba(96, 80, 136, 0.78);
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #b8ffde;
+}
+
+.silroom-railIcon.is-smart {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+}
+
+.silroom-railIcon.is-workspace {
+  background: #f7f8fb;
+  border-color: rgba(255, 255, 255, 0.44);
+}
+
+.silroom-railIconImage {
+  display: block;
+  height: 22px;
+  object-fit: contain;
+  width: 22px;
+}
+
+.silroom-railIcon.is-workspace .silroom-railIconImage {
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.silroom-railIconText {
+  align-items: center;
+  color: #172036;
+  display: flex;
+  font-size: 12px;
+  font-weight: 900;
+  height: 100%;
+  justify-content: center;
+  width: 100%;
+}
+
+.silroom-railBadge {
+  align-items: center;
+  border-radius: 999px;
+  color: #04111d;
+  display: flex;
+  font-size: 10px;
+  font-weight: 800;
+  height: 16px;
+  justify-content: center;
+  min-width: 16px;
+  padding: 0 4px;
+  position: absolute;
+  right: 4px;
+  top: 0;
+}
+
+.silroom-railBadge.is-mention {
+  background: var(--silroom-mention);
+}
+
+.silroom-railBadge.is-unread {
+  background: var(--silroom-unread);
+}
+
+.silroom-panel {
+  background: linear-gradient(180deg, var(--silroom-bg-2), #10192a);
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  overflow: visible;
+  position: relative;
+  width: var(--silroom-panel-width);
+}
+
+.silroom-panelBody {
+  background: linear-gradient(180deg, var(--silroom-bg-2), #10192a);
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+}
+
+.silroom-roomRail {
+  background: #07101e;
+  border-right: 1px solid var(--silroom-border);
+  display: none;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  padding: 10px 7px 8px;
+  width: var(--silroom-room-rail-width);
+}
+
+.silroom-roomRailHeader {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.silroom-roomRailHeader .silroom-iconButton {
+  background: transparent;
+  border-color: transparent;
+  height: 34px;
+  padding: 0;
+  width: 38px;
+}
+
+.silroom-roomRailSpace {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  color: var(--silroom-text);
+  display: flex;
+  height: 38px;
+  justify-content: center;
+  overflow: hidden;
+  width: 38px;
+}
+
+.silroom-roomRailSpace .silroom-railIconImage {
+  height: 26px;
+  width: 26px;
+}
+
+.silroom-roomRailSpace .silroom-railIconText {
+  font-size: 11px;
+}
+
+.silroom-roomRailList {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 7px;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-top: 10px;
+  scrollbar-width: none;
+}
+
+.silroom-roomRailList::-webkit-scrollbar {
+  height: 0;
+  width: 0;
+}
+
+.silroom-roomRailItem {
+  align-items: center;
+  appearance: none;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+  display: flex;
+  flex: 0 0 40px;
+  height: 40px;
+  justify-content: center;
+  margin: 0 auto;
+  padding: 0;
+  position: relative;
+  width: 40px;
+}
+
+.silroom-roomRailItem:hover,
+.silroom-roomRailItem:focus-visible {
+  background: rgba(118, 163, 255, 0.12);
+  border-color: rgba(118, 163, 255, 0.26);
+  outline: none;
+}
+
+.silroom-roomRailItem.is-active {
+  background: rgba(75, 122, 255, 0.24);
+  border-color: rgba(122, 160, 255, 0.56);
+}
+
+.silroom-roomRailItem.has-mention {
+  box-shadow: inset 3px 0 0 var(--silroom-mention);
+}
+
+.silroom-roomRailItem.has-unread:not(.has-mention) {
+  box-shadow: inset 3px 0 0 var(--silroom-unread);
+}
+
+.silroom-roomRailItem .silroom-roomAvatar {
+  height: 32px;
+  width: 32px;
+}
+
+.silroom-roomRailBadge {
+  align-items: center;
+  border-radius: 999px;
+  color: #04111d;
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 900;
+  height: 16px;
+  justify-content: center;
+  min-width: 16px;
+  padding: 0 4px;
+  position: absolute;
+  right: -2px;
+  top: -2px;
+}
+
+.silroom-roomRailBadge.is-mention {
+  background: var(--silroom-mention);
+}
+
+.silroom-roomRailBadge.is-unread {
+  background: var(--silroom-unread);
+}
+
+.silroom-panelHeader {
+  align-items: center;
+  border-bottom: 1px solid var(--silroom-border);
+  display: flex;
+  gap: 10px;
+  min-height: 58px;
+  padding: 10px 12px;
+}
+
+.silroom-panelTitleBlock {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.silroom-panelTitle {
+  color: var(--silroom-text);
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1.2;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.silroom-panelMeta {
+  color: var(--silroom-muted);
+  font-size: 11px;
+  font-weight: 600;
+  margin: 3px 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.silroom-iconButton {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--silroom-border);
+  border-radius: 7px;
+  color: var(--silroom-text);
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 800;
+  height: 30px;
+  justify-content: center;
+  min-width: 34px;
+  padding: 0 8px;
+}
+
+.silroom-iconButton:hover,
+.silroom-iconButton:focus-visible {
+  background: rgba(106, 167, 255, 0.2);
+  border-color: rgba(106, 167, 255, 0.5);
+  outline: none;
+}
+
+.silroom-panelCollapseButton {
+  margin-left: auto;
+}
+
+.silroom-logoResetButton {
+  min-width: 34px;
+}
+
+.silroom-spaceLogoButton {
+  align-items: center;
+  appearance: none;
+  background: #f7f8fb;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  border-radius: 10px;
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 36px;
+  height: 36px;
+  justify-content: center;
+  overflow: hidden;
+  padding: 0;
+  width: 36px;
+}
+
+.silroom-spaceLogoButton:hover,
+.silroom-spaceLogoButton:focus-visible {
+  border-color: rgba(106, 167, 255, 0.72);
+  box-shadow: 0 0 0 2px rgba(106, 167, 255, 0.18);
+  outline: none;
+}
+
+.silroom-spaceLogoImage {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.silroom-spaceLogoText {
+  color: #172036;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.silroom-filterBar {
+  border-bottom: 1px solid var(--silroom-border);
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 10px 12px;
+}
+
+.silroom-filterButton {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--silroom-muted);
+  font-size: 12px;
+  font-weight: 700;
+  height: 30px;
+  min-width: 0;
+  padding: 0 4px;
+}
+
+.silroom-filterButton:hover,
+.silroom-filterButton:focus-visible {
+  border-color: var(--silroom-border-strong);
+  color: var(--silroom-text);
+  outline: none;
+}
+
+.silroom-filterButton.is-selected {
+  background: rgba(34, 201, 139, 0.14);
+  border-color: rgba(34, 201, 139, 0.38);
+  color: #caffea;
+}
+
+.silroom-roomList {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 8px 14px;
+}
+
+.silroom-panelResizer {
+  align-self: stretch;
+  cursor: ew-resize;
+  flex: 0 0 7px;
+  margin-left: -4px;
+  position: relative;
+  z-index: 3;
+}
+
+.silroom-panelResizer::before {
+  background: transparent;
+  border-radius: 999px;
+  bottom: 10px;
+  content: "";
+  left: 2px;
+  position: absolute;
+  top: 10px;
+  transition: background 120ms ease;
+  width: 3px;
+}
+
+.silroom-panelResizer:hover::before {
+  background: rgba(106, 167, 255, 0.58);
+}
+
+:root.silroom-panel-collapsed .silroom-panel {
+  flex: 0 0 var(--silroom-room-rail-width);
+  width: var(--silroom-room-rail-width);
+}
+
+:root.silroom-panel-collapsed .silroom-panelResizer {
+  display: none;
+}
+
+:root.silroom-panel-collapsed .silroom-roomRail {
+  display: flex;
+}
+
+:root.silroom-panel-collapsed .silroom-panelBody {
+  border-right: 1px solid var(--silroom-border);
+  bottom: 0;
+  box-shadow: 16px 0 30px rgba(0, 0, 0, 0.32);
+  left: var(--silroom-room-rail-width);
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  transform: translateX(-8px);
+  transition: opacity 140ms ease, transform 140ms ease, visibility 140ms ease;
+  visibility: hidden;
+  width: var(--silroom-panel-expanded-width);
+  z-index: 4;
+}
+
+:root.silroom-panel-collapsed .silroom-panel:hover .silroom-panelBody,
+:root.silroom-panel-collapsed .silroom-panel:focus-within .silroom-panelBody {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+  visibility: visible;
+}
+
+.silroom-roomRow {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--silroom-text);
+  display: grid;
+  gap: 9px;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  min-height: 52px;
+  padding: 7px 6px;
+}
+
+.silroom-roomRow:hover,
+.silroom-roomRow:focus-visible {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--silroom-border);
+  outline: none;
+}
+
+.silroom-roomRow.is-active {
+  background: rgba(75, 122, 255, 0.24);
+  border-color: rgba(122, 160, 255, 0.56);
+}
+
+.silroom-roomRow.has-mention {
+  background-image: linear-gradient(90deg, rgba(34, 201, 139, 0.14), transparent 55%);
+}
+
+.silroom-roomAvatar {
+  background: var(--silroom-surface);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 50%;
+  display: block;
+  height: 32px;
+  object-fit: cover;
+  width: 32px;
+}
+
+.silroom-roomAvatarFallback {
+  align-items: center;
+  color: var(--silroom-text);
+  display: flex;
+  font-weight: 800;
+  justify-content: center;
+}
+
+.silroom-roomMain {
+  min-width: 0;
+}
+
+.silroom-roomTitleLine {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.silroom-roomTitle {
+  color: var(--silroom-text);
+  display: block;
+  font-size: 13px;
+  font-weight: 750;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.silroom-pin {
+  border: 1px solid rgba(168, 190, 229, 0.32);
+  border-radius: 5px;
+  color: #c8d7f3;
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 1px 4px;
+}
+
+.silroom-roomMeta {
+  align-items: center;
+  display: flex;
+  gap: 5px;
+  margin-top: 3px;
+  min-width: 0;
+}
+
+.silroom-roomMetaText {
+  color: var(--silroom-muted);
+  display: block;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.silroom-roomBadges {
+  align-items: center;
+  display: flex;
+  gap: 4px;
+}
+
+.silroom-badge {
+  align-items: center;
+  border-radius: 999px;
+  color: #04111d;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 900;
+  height: 20px;
+  justify-content: center;
+  min-width: 20px;
+  padding: 0 6px;
+}
+
+.silroom-badge.is-mention {
+  background: var(--silroom-mention);
+}
+
+.silroom-badge.is-unread {
+  background: var(--silroom-unread);
+}
+
+.silroom-dmToggle {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--silroom-dim);
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 700;
+  height: 24px;
+  justify-content: center;
+  min-width: 34px;
+  opacity: 0;
+  padding: 0 5px;
+  pointer-events: none;
+  transition: opacity 100ms ease, border-color 100ms ease, color 100ms ease;
+}
+
+.silroom-roomRow:hover .silroom-dmToggle,
+.silroom-roomRow:focus-within .silroom-dmToggle {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.silroom-dmToggle:hover,
+.silroom-dmToggle:focus-visible {
+  border-color: var(--silroom-focus);
+  color: var(--silroom-text);
+  outline: none;
+}
+
+.silroom-empty {
+  color: var(--silroom-muted);
+  padding: 32px 14px;
+  text-align: center;
+}
+
+.silroom-emptyTitle {
+  color: var(--silroom-text);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.silroom-emptyBody {
+  font-size: 12px;
+  margin-top: 6px;
+}
+
+.silroom-overviewTab {
+  align-items: center;
+  background: var(--silroom-surface-2);
+  border: 1px solid var(--silroom-border-strong);
+  border-radius: 8px 0 0 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+  color: var(--silroom-text);
+  display: flex;
+  font-size: 12px;
+  font-weight: 900;
+  height: 72px;
+  justify-content: center;
+  padding: 0;
+  position: fixed;
+  right: 0;
+  top: 132px;
+  width: 30px;
+  z-index: calc(var(--silroom-z-index) + 2);
+}
+
+.silroom-overviewTab:hover,
+.silroom-overviewTab:focus-visible {
+  background: #2a3d60;
+  border-color: rgba(106, 167, 255, 0.62);
+  outline: none;
+}
+
+.silroom-overviewTabText {
+  writing-mode: vertical-rl;
+}
+
+.silroom-hiddenFile {
+  display: none;
+}
+
+.silroom-powerIcon {
+  display: block;
+  height: 16px;
+  width: 16px;
+}
+
+:root:not(.silroom-enabled) #silroom-shell {
+  display: none;
+}
+
+:root:not(.silroom-enabled) #silroom-overview-tab {
+  display: none;
+}
+
+@media (max-width: 1180px) {
+  :root {
+    --silroom-rail-width: 54px;
+    --silroom-panel-current-width: 276px;
+    --silroom-panel-expanded-width: 276px;
+    --silroom-room-rail-width: 52px;
+  }
+
+  .silroom-filterBar {
+    gap: 4px;
+  }
+
+  .silroom-filterButton {
+    font-size: 11px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .silroom-railHoverLabel,
+  .silroom-dmToggle,
+  .silroom-panelBody {
+    transition: none;
+  }
+}
