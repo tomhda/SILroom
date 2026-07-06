@@ -138,6 +138,9 @@ for (const token of [
   "getStateRoomsForWorkspace(spaceKey)",
   "syncNativeWorkspaceIfNeeded(nextSpace)",
   "setupStructureObserver()",
+  "setupFloatingLayerObserver()",
+  "silroom-chatwork-floating-open",
+  "silroom-chatwork-modal-open",
   "scheduleInteractiveApiRefresh(250)",
 ]) {
   if (!contentSource.includes(token)) {
@@ -168,6 +171,14 @@ if (!Number.isFinite(silroomZIndex) || silroomZIndex > 1000) {
 
 if (!css.includes(":root.silroom-enabled #_chatSendArea:hover")) {
   throw new Error("Chatwork composer hover/focus stacking rule is missing.");
+}
+
+if (!css.includes(":root.silroom-chatwork-floating-open #silroom-shell")) {
+  throw new Error("Chatwork floating overlay yield rule is missing.");
+}
+
+if (!css.includes(":root.silroom-chatwork-modal-open #silroom-shell")) {
+  throw new Error("Chatwork modal overlay yield rule is missing.");
 }
 
 console.log(

@@ -110,16 +110,22 @@
   let workspaceStatePersistTimer = 0;
   let workspaceSettleTimer = 0;
   let observerReconnectTimer = 0;
+  let floatingLayerTimer = 0;
   let apiRefreshInFlight = false;
   let lastRenderedListKey = "";
   let observer = null;
   let structureObserver = null;
+  let floatingLayerObserver = null;
   let observedRoomListArea = null;
   let observedSubContent = null;
   let initialized = false;
 
   const API_REFRESH_MIN_INTERVAL = 30000;
   const LOGO_SIZE = 128;
+  const FLOATING_LAYER_CLASS = "silroom-chatwork-floating-open";
+  const MODAL_LAYER_CLASS = "silroom-chatwork-modal-open";
+  const FLOATING_LAYER_NAME_RE =
+    /(modal|dialog|preview|viewer|lightbox|popover|tooltip|emoji|mention|suggest|autocomplete|balloon|overlay)/i;
 
   const isChatworkPage = () => location.hostname.endsWith("chatwork.com");
 
@@ -426,6 +432,119 @@
       "--silroom-shell-width",
       `calc(var(--silroom-rail-width) + ${panelWidth}px)`
     );
+  };
+
+  const getNodeSignature = (node) =>
+    [
+      node.id || "",
+      typeof node.className === "string" ? node.className : node.getAttribute?.("class") || "",
+      node.getAttribute?.("role") || "",
+      node.getAttribute?.("aria-label") || "",
+      node.getAttribute?.("data-testid") || "",
+      node.getAttribute?.("data-test-id") || "",
+      node.getAttribute?.("data-cwui-component") || "",
+    ].join(" ");
+
+  const classifyFloatingLayer = (node, shellRight) => {
+    if (!(node instanceof HTMLElement) || node === document.body || node === document.documentElement) {
+      return null;
+    }
+
+    const root = document.getElementById(APP.rootId);
+    if (root && (node === root || root.contains(node))) {
+      return null;
+    }
+
+    const style = getComputedStyle(node);
+    if (
+      style.display === "none" ||
+      style.visibility === "hidden" ||
+      Number.parseFloat(style.opacity || "1") === 0
+    ) {
+      return null;
+    }
+
+    const rect = node.getBoundingClientRect();
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    if (
+      rect.width < 32 ||
+      rect.height < 24 ||
+      rect.right <= 0 ||
+      rect.bottom <= 48 ||
+      rect.left >= viewportWidth ||
+      rect.top >= viewportHeight
+    ) {
+      return null;
+    }
+
+    const signature = getNodeSignature(node);
+    const role = node.getAttribute("role");
+    const semanticModal = role === "dialog" || node.getAttribute("aria-modal") === "true";
+    const namedFloatingLayer = FLOATING_LAYER_NAME_RE.test(signature);
+    const zIndex = Number.parseInt(style.zIndex, 10);
+    const positionedAboveBase =
+      style.position === "fixed" ||
+      (style.position === "absolute" && Number.isFinite(zIndex) && zIndex > 0);
+    const largeLayer =
+      rect.width >= viewportWidth * 0.32 ||
+      rect.height >= viewportHeight * 0.22 ||
+      (rect.width >= 360 && rect.height >= 180);
+    const unnamedFixedLayer = style.position === "fixed" && largeLayer;
+    const isFloatingLayer = semanticModal || namedFloatingLayer || unnamedFixedLayer;
+
+    if (!isFloatingLayer || !positionedAboveBase) {
+      return null;
+    }
+
+    const overlapsSilroomArea = rect.left < shellRight && rect.right > 0;
+    const crossesIntoChatArea = rect.right > shellRight + 8 && rect.bottom > 48;
+    const modalLike = semanticModal || (largeLayer && (overlapsSilroomArea || rect.left < viewportWidth * 0.25));
+
+    return {
+      floating: crossesIntoChatArea || overlapsSilroomArea,
+      modal: modalLike && crossesIntoChatArea,
+    };
+  };
+
+  const readFloatingLayerState = () => {
+    if (!settings.enabled || !document.body) {
+      return { floating: false, modal: false };
+    }
+
+    const shellRect = document.getElementById(APP.shellId)?.getBoundingClientRect();
+    const shellRight =
+      shellRect?.right ||
+      Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--silroom-shell-width")) ||
+      360;
+    let floating = false;
+    let modal = false;
+
+    for (const node of document.body.getElementsByTagName("*")) {
+      const layer = classifyFloatingLayer(node, shellRight);
+      if (!layer) {
+        continue;
+      }
+
+      floating = floating || layer.floating;
+      modal = modal || layer.modal;
+      if (modal) {
+        break;
+      }
+    }
+
+    return { floating, modal };
+  };
+
+  const updateFloatingLayerState = () => {
+    const { floating, modal } = readFloatingLayerState();
+    document.documentElement.classList.toggle(FLOATING_LAYER_CLASS, floating);
+    document.documentElement.classList.toggle(MODAL_LAYER_CLASS, modal);
+  };
+
+  const scheduleFloatingLayerCheck = (delay = 80) => {
+    clearTimeout(floatingLayerTimer);
+    floatingLayerTimer = window.setTimeout(updateFloatingLayerState, delay);
   };
 
   const normalizeText = (value) => String(value || "").replace(/\s+/g, " ").trim();
@@ -1554,6 +1673,7 @@
     );
     restoreRenderState(renderState, nextListKey);
     lastRenderedListKey = nextListKey;
+    scheduleFloatingLayerCheck(20);
   };
 
   const selectRoom = (roomId) => {
@@ -2091,6 +2211,8 @@
         return;
       }
 
+      scheduleFloatingLayerCheck();
+
       if (pendingWorkspaceLoad.key === settings.selectedSpace) {
         scheduleWorkspaceSettledRender(settings.selectedSpace);
         return;
@@ -2124,6 +2246,8 @@
     }
 
     structureObserver = new MutationObserver(() => {
+      scheduleFloatingLayerCheck();
+
       const nextRoomListArea = document.querySelector(SELECTORS.roomListArea);
       const nextSubContent = document.querySelector(SELECTORS.subContent);
 
@@ -2142,6 +2266,45 @@
       childList: true,
       subtree: true,
     });
+  };
+
+  const setupFloatingLayerObserver = () => {
+    floatingLayerObserver?.disconnect();
+
+    if (!document.body) {
+      return;
+    }
+
+    floatingLayerObserver = new MutationObserver((records) => {
+      const root = document.getElementById(APP.rootId);
+      const onlySilroomChanged =
+        root &&
+        records.every((record) => {
+          const target = record.target;
+          return target === root || root.contains(target);
+        });
+
+      if (!onlySilroomChanged) {
+        scheduleFloatingLayerCheck();
+      }
+    });
+
+    floatingLayerObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: [
+        "class",
+        "style",
+        "hidden",
+        "open",
+        "aria-hidden",
+        "aria-modal",
+        "aria-expanded",
+        "role",
+      ],
+    });
+    scheduleFloatingLayerCheck(20);
   };
 
   const waitForChatwork = async () => {
@@ -2187,11 +2350,14 @@
     window.addEventListener("hashchange", () => {
       debounceRender(20);
       scheduleInteractiveApiRefresh(250);
+      scheduleFloatingLayerCheck(20);
     });
+    window.addEventListener("resize", () => scheduleFloatingLayerCheck(120));
     window.addEventListener("focus", () => scheduleInteractiveApiRefresh(250));
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") {
         scheduleInteractiveApiRefresh(250);
+        scheduleFloatingLayerCheck(20);
       }
     });
 
@@ -2239,6 +2405,7 @@
     setupObserver();
     setupStructureObserver();
     render();
+    setupFloatingLayerObserver();
     syncNativeWorkspaceIfNeeded(settings.selectedSpace);
     scheduleApiRefresh(50, true);
     window.setInterval(() => scheduleApiRefresh(), 120000);
