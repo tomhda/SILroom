@@ -1,109 +1,112 @@
-# SILroom Privacy Policy
+# SILroom プライバシーポリシー
 
-Effective date: July 6, 2026
+施行日: 2026年7月6日
 
-SILroom is a Chrome extension that improves the Chatwork room list by organizing rooms into spaces, separating 1:1 chats as DM-like rooms, prioritizing mentions and unread rooms, and allowing the Chatwork overview panel to be collapsed.
+SILroomは、Chatworkのチャットルーム一覧を整理し、カテゴリーをスペースとして扱い、1:1チャットをDMのように分離し、自分宛通知や未読ルームを確認しやすくするChrome拡張です。また、Chatwork右側の概要欄を必要なときだけ開けるようにします。
 
-This Privacy Policy explains what information SILroom handles, how it is used, and how it is stored.
+このプライバシーポリシーでは、SILroomが扱う情報、その利用目的、保存方法、共有の有無について説明します。
 
-## Information SILroom Handles
+## SILroomが扱う情報
 
-SILroom may handle the following information to provide its room-list organization features.
+SILroomは、ルーム一覧を整理表示するために、以下の情報を扱う場合があります。
 
-### Chatwork Room Information
+### Chatworkルーム情報
 
-When used on `https://www.chatwork.com/`, SILroom reads information from the Chatwork page so it can reorganize the room list. This may include:
+SILroomは `https://www.chatwork.com/` 上で、Chatworkのルーム一覧を整理するために、ページ上の情報を読み取ります。これには以下が含まれます。
 
-- room names
-- room IDs
-- room categories
-- room icons or avatar image URLs
-- unread counts
-- mention counts
-- pinned room state
-- currently selected room state
+- ルーム名
+- ルームID
+- ルームカテゴリー
+- ルームアイコンまたはアバター画像URL
+- 未読数
+- 自分宛数
+- 固定チャット状態
+- 現在選択中のルーム状態
 
-This information is used only to display and organize the SILroom room list inside the user's browser.
+これらの情報は、ユーザーのブラウザ内でSILroomのルーム一覧を表示・整理するためだけに使用されます。
 
-### Optional Chatwork API Token
+### 任意のChatwork APIトークン
 
-SILroom can optionally use a Chatwork API token supplied by the user. This feature is not required for basic use.
+SILroomは、ユーザーが任意で入力したChatwork APIトークンを使用できます。この機能は基本利用には必須ではありません。
 
-If the user saves an API token, SILroom stores it in Chrome local extension storage and uses it only to make read-only requests to the official Chatwork API. The token is used to improve the accuracy of:
+ユーザーがAPIトークンを保存した場合、SILroomはそのトークンをChromeのローカル拡張機能ストレージに保存し、Chatwork公式APIへの読み取りリクエストにのみ使用します。APIトークンは、以下の表示精度を上げるために使用されます。
 
-- 1:1 chat detection
-- unread counts
-- mention counts
-- pinned room state
-- room update order
-- room metadata that may not be visible in the current Chatwork page DOM
+- 1:1チャット判定
+- 未読数
+- 自分宛数
+- 固定チャット状態
+- ルーム更新順
+- 現在のChatwork画面に表示されていないルームメタ情報
 
-SILroom does not use the Chatwork API token to send messages, edit messages, delete messages, invite users, create tasks, or perform other write actions.
+SILroomは、Chatwork APIトークンを使ってメッセージ送信、メッセージ編集、メッセージ削除、招待、タスク作成、その他の書き込み操作を行いません。
 
-### SILroom Settings
+### SILroom設定
 
-SILroom stores user settings locally in Chrome extension storage. These settings may include:
+SILroomは、ユーザーの表示設定をChromeのローカル拡張機能ストレージに保存します。保存される設定には以下が含まれます。
 
-- whether SILroom is enabled
-- selected space
-- room list width
-- overview panel open or closed state
-- workspace order
-- workspace logo images selected by the user
-- manual DM or normal-room classification overrides
-- cached room-to-workspace mapping used to keep the UI stable
+- SILroomの有効・一時停止状態
+- 選択中スペース
+- ルーム一覧の幅
+- 概要欄の開閉状態
+- ワークスペースの並び順
+- ユーザーが選択したワークスペースロゴ画像
+- DM扱い・通常チャット扱いの手動上書き
+- 表示安定化のためのルームとワークスペースの対応キャッシュ
 
-These settings are used only to preserve the user's SILroom experience.
+これらの設定は、ユーザーのSILroom利用状態を維持するためだけに使用されます。
 
-## How Information Is Used
+## 情報の利用目的
 
-SILroom uses the information above only to provide its stated purpose: organizing the Chatwork room list and making room navigation easier.
+SILroomは、上記の情報を次の単一目的のためだけに使用します。
 
-SILroom does not use this information for advertising, analytics, profiling, creditworthiness, lending qualification, data brokerage, or any purpose unrelated to the extension's room-list organization features.
+Chatworkのチャットルーム一覧を整理し、ユーザーが目的のチャットルームへ移動しやすくすること。
 
-## Data Storage
+SILroomは、広告、解析、プロファイリング、信用評価、融資判定、データ販売、その他この目的と関係のない用途には情報を使用しません。
 
-SILroom stores settings and the optional Chatwork API token locally using Chrome extension storage on the user's device.
+## データの保存
 
-SILroom does not operate a developer server for collecting, storing, or processing user data.
+SILroomの設定と任意のChatwork APIトークンは、ユーザーの端末上にあるChrome拡張機能のローカルストレージに保存されます。
 
-## Data Sharing
+SILroomは、ユーザーデータを収集・保存・処理するための開発者サーバーを運用していません。
 
-SILroom does not sell, rent, or share user data with advertisers, analytics providers, data brokers, or other third parties.
+## データの共有
 
-If the user enables API Assist by saving a Chatwork API token, SILroom sends read-only requests directly from the extension to the official Chatwork API at `https://api.chatwork.com/`. These requests are used only to retrieve Chatwork room metadata needed for SILroom's user-facing features.
+SILroomは、ユーザーデータを広告事業者、解析事業者、データブローカー、その他の第三者に販売、貸与、共有しません。
 
-SILroom does not send Chatwork data or API tokens to any developer-operated server.
+ユーザーがAPI補助を有効にした場合のみ、SILroomはユーザーが保存したAPIトークンを使って、`https://api.chatwork.com/` のChatwork公式APIへ読み取りリクエストを送信します。この通信は、SILroomの表示機能に必要なルームメタ情報を取得するためだけに行われます。
 
-## Remote Code
+SILroomは、ChatworkデータやAPIトークンを開発者が運用するサーバーへ送信しません。
 
-SILroom does not load or execute remotely hosted code. All executable JavaScript is included in the Chrome extension package.
+## リモートコード
 
-## User Control and Deletion
+SILroomは、外部サーバーからリモートコードを読み込んだり実行したりしません。
 
-Users can remove SILroom's locally stored data by:
+実行されるJavaScriptはすべてChrome拡張機能パッケージ内に含まれています。
 
-1. Opening the SILroom extension popup.
-2. Deleting the saved Chatwork API token, if one has been saved.
-3. Removing the SILroom extension from Chrome to delete its extension storage.
+## ユーザーによる管理と削除
 
-Users can also revoke or regenerate their Chatwork API token from their Chatwork account settings.
+ユーザーは、以下の方法でSILroomに保存されたローカルデータを削除できます。
 
-## Permissions
+1. SILroomの拡張機能ポップアップを開く。
+2. 保存済みのChatwork APIトークンがある場合は削除する。
+3. SILroom拡張機能をChromeから削除し、拡張機能ストレージを削除する。
 
-SILroom requests only the permissions needed for its stated purpose.
+ユーザーは、Chatworkのアカウント設定からAPIトークンを無効化または再発行することもできます。
 
-- `storage`: stores SILroom settings and the optional Chatwork API token in Chrome local extension storage.
-- `https://www.chatwork.com/*`: allows SILroom to display its UI on Chatwork and read room-list information from the Chatwork page.
-- `https://api.chatwork.com/*`: allows optional read-only Chatwork API requests when the user enables API Assist.
+## 権限
 
-## Changes to This Policy
+SILroomは、目的に必要な範囲の権限だけを要求します。
 
-This Privacy Policy may be updated when SILroom's functionality changes. The effective date at the top of this document will be updated when material changes are made.
+- `storage`: SILroom設定と任意のChatwork APIトークンをChromeローカル拡張機能ストレージに保存するため。
+- `https://www.chatwork.com/*`: Chatwork上にSILroom UIを表示し、ルーム一覧情報を読み取るため。
+- `https://api.chatwork.com/*`: ユーザーがAPI補助を有効にした場合に、Chatwork公式APIから読み取り専用のルームメタ情報を取得するため。
 
-## Contact
+## ポリシーの変更
 
-For questions about this Privacy Policy, please open an issue in this GitHub repository:
+SILroomの機能変更に伴い、このプライバシーポリシーを更新する場合があります。重要な変更がある場合は、このページの施行日を更新します。
 
-https://github.com/tomhda/SILroom-privacy-policy/issues
+## 問い合わせ
 
+このプライバシーポリシーに関する問い合わせは、以下のGitHubリポジトリのIssueから行ってください。
+
+https://github.com/tomhda/SILroom/issues
