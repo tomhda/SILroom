@@ -46,7 +46,6 @@ p {
 
 .popup__header p,
 .popup__switch small,
-.popup__hint,
 .popup__note {
   color: var(--muted);
   font-size: 12px;
@@ -214,10 +213,6 @@ button:focus-visible {
   font-size: 11px;
   min-height: 15px;
   margin-top: 7px;
-}
-
-.popup__hint {
-  margin-top: 8px;
 }
 
 .popup__note {
