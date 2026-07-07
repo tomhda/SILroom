@@ -5,7 +5,7 @@
     name: "SILroom",
     rootId: "silroom-root",
     shellId: "silroom-shell",
-    version: "0.1.2",
+    version: "0.1.3",
     storageKey: "silroomSettings",
     iconsKey: "silroomWorkspaceIcons",
     workspaceStateKey: "silroomWorkspaceState",
@@ -1681,20 +1681,6 @@
             h("h2", { class: "silroom-panelTitle", text: currentSpace?.label || "全体" }),
           ]),
           currentSpace?.key === "all" ? renderAllBadgeToggle() : null,
-          currentSpace?.kind === "workspace" && getWorkspaceIcon(currentSpace)
-            ? h(
-                "button",
-                {
-                  class: "silroom-iconButton silroom-logoResetButton",
-                  type: "button",
-                  title: `${currentSpace.label}のロゴを解除`,
-                  ariaLabel: `${currentSpace.label}のロゴを解除`,
-                  dataAction: "reset-workspace-logo",
-                  dataWorkspace: currentSpace.label,
-                },
-                ["解除"]
-              )
-            : null,
           h(
             "button",
             {
@@ -2005,13 +1991,6 @@
     render();
   };
 
-  const resetWorkspaceLogo = async (workspaceLabel) => {
-    const workspaceIcons = { ...(settings.workspaceIcons || {}) };
-    delete workspaceIcons[workspaceLabel];
-    await storage.set({ workspaceIcons });
-    render();
-  };
-
   const handleClick = async (event) => {
     const actionNode = event.target.closest("[data-action]");
 
@@ -2074,11 +2053,6 @@
 
     if (action === "upload-workspace-logo") {
       uploadWorkspaceLogo(actionNode.dataset.workspace);
-      return;
-    }
-
-    if (action === "reset-workspace-logo") {
-      await resetWorkspaceLogo(actionNode.dataset.workspace);
       return;
     }
 

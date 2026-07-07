@@ -595,10 +595,6 @@
   margin-left: auto;
 }
 
-.silroom-logoResetButton {
-  min-width: 34px;
-}
-
 .silroom-toggleButton {
   align-items: center;
   background: rgba(255, 255, 255, 0.06);
