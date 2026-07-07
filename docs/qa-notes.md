@@ -22,6 +22,7 @@ Verified behavior:
 - Basic spaces use SVG icon image elements
 - Workspace selection shows a clickable workspace logo frame
 - Hidden logo file input is present
+- My Chat space can be selected
 - DM space can be selected
 - Overview drawer opens and closes
 - Search field is removed
@@ -40,6 +41,7 @@ Latest manual preview:
 - `検索` input count: 0
 - `ON` text count: 0
 - old DM/type pill count: 0
+- マイチャット space: 1 room in fixture
 - rail width: 58px
 - rail label position: absolute
 - rail label writing mode: horizontal

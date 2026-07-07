@@ -32,6 +32,7 @@ const requiredFiles = [
   "assets/icons/mention.svg",
   "assets/icons/pin.svg",
   "assets/icons/power.svg",
+  "assets/icons/my.svg",
   "assets/icons/unclassified.svg",
   "assets/icons/icon-16.png",
   "assets/icons/icon-32.png",
@@ -108,6 +109,7 @@ for (const file of ["src/background.js", "src/content/main.js", "popup.js"]) {
 }
 
 const contentSource = read("src/content/main.js");
+const styleSource = read("styles/silroom.css");
 if (!/if \(spaceKey === "attention"\) {\s*return room\.mentionCount > 0;\s*}/.test(contentSource)) {
   throw new Error("Attention space must match mention rooms only.");
 }
@@ -125,12 +127,100 @@ if (/(tooltip|popover|emoji|mention|suggest|autocomplete|balloon)/.test(modalLay
   throw new Error("Hover and composer helpers must not be treated as modal layers.");
 }
 
-if (!contentSource.includes("const targetRooms = isWorkspaceSpace(spaceKey) ? cachedRooms : liveRooms;")) {
-  throw new Error("Smart space badges must not fall back to stale cached rooms.");
+for (const token of [
+  "const mentionCount = badges.mention;",
+  "const unreadCount = badges.unread;",
+  "const targetRooms = isWorkspaceSpace(spaceKey) ? mergeRoomsById(liveRooms, cachedRooms) : liveRooms;",
+  "const nativeStats = getNativeWorkspaceStats(spaceKey);",
+  "mention: Math.max(roomStats.mention, nativeStats.mention)",
+  "title: `自分宛 ${room.mentionCount}`",
+]) {
+  if (!contentSource.includes(token)) {
+    throw new Error(`Missing distributed notification token: ${token}`);
+  }
+}
+
+for (const token of [
+  "allBadgeEnabled: false",
+  "if (space.key === \"all\")",
+  "全体に自分宛あり",
+  "text: badge.dot ? \"\"",
+  "dataAction: \"toggle-all-badge\"",
+]) {
+  if (!contentSource.includes(token)) {
+    throw new Error(`Missing all-space badge token: ${token}`);
+  }
+}
+
+for (const token of [
+  ".silroom-railBadge.is-dot",
+  ".silroom-toggleButton.is-on",
+]) {
+  if (!styleSource.includes(token)) {
+    throw new Error(`Missing all-space badge style: ${token}`);
+  }
+}
+
+for (const token of [
+  "--silroom-mention: #19e58f",
+  "--silroom-unread: #7d8ca6",
+  ".silroom-roomRow.has-unread:not(.has-mention)",
+  ".silroom-badge.is-dot",
+  ".silroom-roomRailBadge.is-dot",
+  "color: var(--silroom-mention-text)",
+  "color: var(--silroom-unread-text)",
+]) {
+  if (!styleSource.includes(token)) {
+    throw new Error(`Missing separated notification color style: ${token}`);
+  }
+}
+
+const mentionColor = styleSource.match(/--silroom-mention:\s*([^;]+);/)?.[1]?.trim();
+const unreadColor = styleSource.match(/--silroom-unread:\s*([^;]+);/)?.[1]?.trim();
+if (!mentionColor || !unreadColor || mentionColor === unreadColor) {
+  throw new Error("Mention and unread notification colors must be visibly distinct.");
+}
+
+for (const token of [
+  'return { kind: "unread", dot: true, label: "未読あり" };',
+  'class: "silroom-badge is-unread is-dot"',
+  'class: "silroom-roomRailBadge is-unread is-dot"',
+  'title: "未読あり"',
+]) {
+  if (!contentSource.includes(token)) {
+    throw new Error(`Unread notifications must be countless and subdued: ${token}`);
+  }
+}
+
+const fixtureSource = read("tests/fixtures/chatwork-like.html");
+for (const token of [
+  'aria-label="自分宛 2"',
+  'data-workspace="サンプルA"',
+  'data-workspace="サンプルB"',
+]) {
+  if (!fixtureSource.includes(token)) {
+    throw new Error(`Fixture must cover workspace notifications: ${token}`);
+  }
 }
 
 if (!contentSource.includes("自分宛の未読はありません")) {
   throw new Error("Attention empty state must describe unread mentions.");
+}
+
+if (!fixtureSource.includes("マイチャット")) {
+  throw new Error("Fixture must include a my chat room.");
+}
+
+for (const token of [
+  "{ key: \"my\", label: \"マイチャット\"",
+  "if (spaceKey === \"my\")",
+  "return room.type === \"self\"",
+  "workspaceLabel === \"my\"",
+  "assets/icons/${space.icon}",
+]) {
+  if (!contentSource.includes(token)) {
+    throw new Error(`Missing my chat space token: ${token}`);
+  }
 }
 
 if (!/const BADGELESS_SPACE_KEYS = new Set\(\["fixed", "unclassified"\]\);/.test(contentSource)) {

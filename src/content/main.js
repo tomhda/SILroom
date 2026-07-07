@@ -32,6 +32,7 @@
     manualTypes: {},
     workspaceIcons: {},
     workspaceOrder: [],
+    allBadgeEnabled: false,
     apiAssistEnabled: false,
     apiAssistVersion: 0,
   };
@@ -41,6 +42,7 @@
     "attention",
     "fixed",
     "unclassified",
+    "my",
     "dm",
   ];
 
@@ -56,6 +58,7 @@
     all: "all.svg",
     fixed: "pin.svg",
     unclassified: "unclassified.svg",
+    my: "my.svg",
     dm: "dm.svg",
   };
   const BADGELESS_SPACE_KEYS = new Set(["fixed", "unclassified"]);
@@ -125,7 +128,10 @@
   const MODAL_LAYER_CLASS = "silroom-chatwork-modal-open";
   const MODAL_LAYER_NAME_RE = /(modal|dialog|preview|viewer|lightbox|overlay)/i;
 
-  const isChatworkPage = () => location.hostname.endsWith("chatwork.com");
+  const isLocalFixturePage = () =>
+    ["127.0.0.1", "localhost"].includes(location.hostname) &&
+    location.pathname.endsWith("/tests/fixtures/chatwork-like.html");
+  const isChatworkPage = () => location.hostname.endsWith("chatwork.com") || isLocalFixturePage();
 
   const stripPrivateSettings = (value = {}) => {
     const next = { ...value };
@@ -581,7 +587,7 @@
     const visit = (node) => {
       Array.from(node.children || []).forEach((child) => {
         if (child.matches?.('li[role="tab"][id]')) {
-          map.set(child.id, currentWorkspace || "");
+          map.set(child.id, child.dataset.workspace || currentWorkspace || "");
           return;
         }
 
@@ -674,6 +680,8 @@
     return "room";
   };
 
+  const isSeparatedPersonalRoom = (room) => room.type === "dm" || room.type === "self";
+
   const getLearnedWorkspace = (roomId) => {
     const entry = workspaceState.roomWorkspace?.[String(roomId)];
     if (!entry?.workspace || Date.now() - toNumber(entry.observedAt) > WORKSPACE_STATE_TTL) {
@@ -686,6 +694,10 @@
   const inferWorkspace = (room) => {
     if (room.type === "dm") {
       return "dm";
+    }
+
+    if (room.type === "self") {
+      return "my";
     }
 
     if (room.domWorkspace) {
@@ -719,14 +731,32 @@
     }
 
     const style = getComputedStyle(element);
-    const colorLine = `${style.backgroundColor} ${style.color} ${element.className || ""}`.toLowerCase();
+    const className = typeof element.className === "string" ? element.className : "";
+    const markerLine = [
+      className,
+      element.getAttribute("aria-label") || "",
+      element.getAttribute("title") || "",
+      element.dataset?.type || "",
+      element.dataset?.kind || "",
+    ]
+      .join(" ")
+      .toLowerCase();
+    const colorLine = `${style.backgroundColor} ${style.color} ${markerLine}`.toLowerCase();
+    const isExplicitMention =
+      markerLine.includes("mention") ||
+      markerLine.includes("to-me") ||
+      markerLine.includes("to_me") ||
+      markerLine.includes("自分宛");
+    const isExplicitUnread = markerLine.includes("unread") || markerLine.includes("未読");
     const isMention =
-      isGreenDominant(style.backgroundColor) ||
-      colorLine.includes("rgb(0, 153") ||
-      colorLine.includes("rgb(0, 170") ||
-      colorLine.includes("rgb(0, 180") ||
-      colorLine.includes("green") ||
-      colorLine.includes("mention");
+      isExplicitMention ||
+      (!isExplicitUnread &&
+        (isGreenDominant(style.backgroundColor) ||
+          colorLine.includes("rgb(0, 153") ||
+          colorLine.includes("rgb(0, 170") ||
+          colorLine.includes("rgb(0, 180") ||
+          colorLine.includes("green") ||
+          colorLine.includes("mention")));
 
     return {
       value,
@@ -794,8 +824,8 @@
         const avatarSrc = apiRoom?.icon_path || img?.getAttribute("src") || "";
         const active = row.id === currentRid || row.getAttribute("aria-selected") === "true";
         const badges = extractBadges(row);
-        const mentionCount = active ? 0 : badges.mention;
-        const unreadCount = active ? 0 : badges.unread;
+        const mentionCount = badges.mention;
+        const unreadCount = badges.unread;
         const room = {
           id: row.id,
           name,
@@ -829,8 +859,8 @@
       .filter((apiRoom) => apiRoom?.room_id && !seenIds.has(String(apiRoom.room_id)))
       .map((apiRoom, index) => {
         const active = String(apiRoom.room_id) === currentRid;
-        const mentionCount = active ? 0 : toNumber(apiRoom.mention_num);
-        const unreadCount = active ? 0 : Math.max(0, toNumber(apiRoom.unread_num) - mentionCount);
+        const mentionCount = toNumber(apiRoom.mention_num);
+        const unreadCount = Math.max(0, toNumber(apiRoom.unread_num) - mentionCount);
         const room = {
           id: String(apiRoom.room_id),
           name: normalizeText(apiRoom.name),
@@ -906,7 +936,13 @@
   };
 
   const rememberRoomWorkspace = (room, workspaceLabel) => {
-    if (!workspaceLabel || workspaceLabel === "dm" || workspaceLabel === "unclassified" || room.type === "dm") {
+    if (
+      !workspaceLabel ||
+      workspaceLabel === "dm" ||
+      workspaceLabel === "my" ||
+      workspaceLabel === "unclassified" ||
+      isSeparatedPersonalRoom(room)
+    ) {
       return false;
     }
 
@@ -983,6 +1019,7 @@
       { key: "attention", label: "自分宛", short: "宛", kind: "smart", icon: SMART_SPACE_ICONS.attention },
       { key: "fixed", label: "固定", short: "固", kind: "smart", icon: SMART_SPACE_ICONS.fixed },
       { key: "unclassified", label: "未分類", short: "未", kind: "smart", icon: SMART_SPACE_ICONS.unclassified },
+      { key: "my", label: "マイチャット", short: "自", kind: "smart", icon: SMART_SPACE_ICONS.my },
       { key: "dm", label: "DM", short: "DM", kind: "smart", icon: SMART_SPACE_ICONS.dm },
     ];
 
@@ -1091,13 +1128,16 @@
       return room.pinned;
     }
     if (spaceKey === "unclassified") {
-      return room.workspace === "unclassified" && room.type !== "dm";
+      return room.workspace === "unclassified" && !isSeparatedPersonalRoom(room);
+    }
+    if (spaceKey === "my") {
+      return room.type === "self";
     }
     if (spaceKey === "dm") {
       return room.type === "dm";
     }
     if (spaceKey.startsWith("workspace:")) {
-      return room.workspace === spaceKey.replace("workspace:", "") && room.type !== "dm";
+      return room.workspace === spaceKey.replace("workspace:", "") && !isSeparatedPersonalRoom(room);
     }
     return true;
   };
@@ -1137,11 +1177,11 @@
     const nextCache = new Map(spaceRoomCache);
 
     spaces.forEach((space) => {
-      if (isWorkspaceSpace(space.key) && space.key !== settings.selectedSpace) {
+      const targetRooms = getRoomsForSpace(space.key);
+      if (isWorkspaceSpace(space.key) && space.key !== settings.selectedSpace && targetRooms.length === 0) {
         return;
       }
 
-      const targetRooms = getRoomsForSpace(space.key);
       if (targetRooms.length > 0) {
         const roomsSnapshot = targetRooms.map((room) => ({ ...room, nativeRow: null }));
 
@@ -1182,7 +1222,9 @@
     const pendingCurrentWorkspace =
       pendingWorkspaceLoad.key === settings.selectedSpace && Date.now() - pendingWorkspaceLoad.startedAt < 2600;
     const sourceRooms = isWorkspaceSpace(settings.selectedSpace)
-      ? fallback?.rooms || (pendingCurrentWorkspace ? [] : fallback?.candidateRooms || [])
+      ? selectedRooms.length > 0
+        ? selectedRooms
+        : fallback?.rooms || (pendingCurrentWorkspace ? [] : fallback?.candidateRooms || [])
       : selectedRooms;
 
     return sourceRooms
@@ -1204,22 +1246,64 @@
       });
   };
 
+  const sumRoomStats = (targetRooms) => ({
+    total: targetRooms.length,
+    mention: targetRooms.reduce((sum, room) => sum + room.mentionCount, 0),
+    unread: targetRooms.reduce((sum, room) => sum + room.unreadCount, 0),
+  });
+
+  const getNativeWorkspaceStats = (spaceKey) => {
+    if (!isWorkspaceSpace(spaceKey)) {
+      return null;
+    }
+
+    const listArea = document.querySelector(SELECTORS.roomListArea);
+    if (!listArea) {
+      return null;
+    }
+
+    const workspaceLabel = spaceKey.replace("workspace:", "");
+    const categoryButton = Array.from(listArea.querySelectorAll('[role="button"]'))
+      .filter(isNativeCategoryButton)
+      .find((node) => cleanCategoryName(node.getAttribute("aria-label") || node.innerText || node.textContent) === workspaceLabel);
+
+    return categoryButton ? extractBadges(categoryButton) : null;
+  };
+
   const getSpaceStats = (spaceKey) => {
     const liveRooms = getRoomsForSpace(spaceKey);
     const cachedEntry = spaceRoomCache.get(spaceKey);
     const cachedRooms = cachedEntry?.rooms || cachedEntry?.candidateRooms || [];
-    const targetRooms = isWorkspaceSpace(spaceKey) ? cachedRooms : liveRooms;
+    const targetRooms = isWorkspaceSpace(spaceKey) ? mergeRoomsById(liveRooms, cachedRooms) : liveRooms;
+    const roomStats = sumRoomStats(targetRooms);
+    const nativeStats = getNativeWorkspaceStats(spaceKey);
+
+    if (!nativeStats) {
+      return roomStats;
+    }
 
     return {
-      total: targetRooms.length,
-      mention: targetRooms.reduce((sum, room) => sum + room.mentionCount, 0),
-      unread: targetRooms.reduce((sum, room) => sum + room.unreadCount, 0),
+      total: roomStats.total,
+      mention: Math.max(roomStats.mention, nativeStats.mention),
+      unread: Math.max(roomStats.unread, nativeStats.unread),
     };
   };
 
   const getRailBadge = (space, stats) => {
     if (BADGELESS_SPACE_KEYS.has(space.key)) {
       return null;
+    }
+
+    if (space.key === "all") {
+      if (!settings.allBadgeEnabled || (stats.mention === 0 && stats.unread === 0)) {
+        return null;
+      }
+
+      return {
+        kind: stats.mention > 0 ? "mention" : "unread",
+        dot: true,
+        label: stats.mention > 0 ? "全体に自分宛あり" : "全体に未読あり",
+      };
     }
 
     if (space.key === "attention") {
@@ -1231,7 +1315,7 @@
     }
 
     if (stats.unread > 0) {
-      return { kind: "unread", value: stats.unread };
+      return { kind: "unread", dot: true, label: "未読あり" };
     }
 
     return null;
@@ -1244,9 +1328,13 @@
       return null;
     }
 
+    const label = badge.label || (badge.kind === "mention" ? `自分宛 ${badge.value}` : `未読 ${badge.value}`);
+
     return h("span", {
-      class: `silroom-railBadge is-${badge.kind}`,
-      text: badge.value > 99 ? "99+" : badge.value,
+      class: `silroom-railBadge is-${badge.kind}${badge.dot ? " is-dot" : ""}`,
+      title: label,
+      ariaLabel: label,
+      text: badge.dot ? "" : badge.value > 99 ? "99+" : badge.value,
     });
   };
 
@@ -1366,6 +1454,28 @@
       [label]
     );
 
+  const renderAllBadgeToggle = () => {
+    const label = settings.allBadgeEnabled ? "全体通知を非表示" : "全体通知を表示";
+
+    return h(
+      "button",
+      {
+        class: `silroom-toggleButton${settings.allBadgeEnabled ? " is-on" : ""}`,
+        type: "button",
+        title: label,
+        ariaLabel: label,
+        ariaPressed: settings.allBadgeEnabled ? "true" : "false",
+        dataAction: "toggle-all-badge",
+      },
+      [
+        h("span", { class: "silroom-toggleTrack", ariaHidden: "true" }, [
+          h("span", { class: "silroom-toggleKnob", ariaHidden: "true" }),
+        ]),
+        h("span", { class: "silroom-toggleText", text: "通知" }),
+      ]
+    );
+  };
+
   const renderRoomAvatar = (room) => {
     if (room.avatarSrc) {
       return h("img", { class: "silroom-roomAvatar", src: room.avatarSrc, alt: "" });
@@ -1376,6 +1486,12 @@
 
   const getRoomMetaText = (room, manual) => {
     const parts = [];
+
+    if (room.mentionCount > 0) {
+      parts.push("自分宛");
+    } else if (room.unreadCount > 0) {
+      parts.push("未読");
+    }
 
     if (room.type === "dm") {
       parts.push("DM");
@@ -1420,8 +1536,12 @@
           ]),
         ]),
         h("div", { class: "silroom-roomBadges" }, [
-          room.mentionCount > 0 ? h("span", { class: "silroom-badge is-mention", text: room.mentionCount }) : null,
-          room.unreadCount > 0 ? h("span", { class: "silroom-badge is-unread", text: room.unreadCount }) : null,
+          room.mentionCount > 0
+            ? h("span", { class: "silroom-badge is-mention", title: `自分宛 ${room.mentionCount}`, ariaLabel: `自分宛 ${room.mentionCount}`, text: room.mentionCount })
+            : null,
+          room.unreadCount > 0
+            ? h("span", { class: "silroom-badge is-unread is-dot", title: "未読あり", ariaLabel: "未読あり", text: "" })
+            : null,
           h(
             "button",
             {
@@ -1453,10 +1573,20 @@
       [
         renderRoomAvatar(room),
         room.mentionCount > 0
-          ? h("span", { class: "silroom-roomRailBadge is-mention", text: room.mentionCount > 99 ? "99+" : room.mentionCount })
+          ? h("span", {
+              class: "silroom-roomRailBadge is-mention",
+              title: `自分宛 ${room.mentionCount}`,
+              ariaLabel: `自分宛 ${room.mentionCount}`,
+              text: room.mentionCount > 99 ? "99+" : room.mentionCount,
+            })
           : null,
         room.mentionCount === 0 && room.unreadCount > 0
-          ? h("span", { class: "silroom-roomRailBadge is-unread", text: room.unreadCount > 99 ? "99+" : room.unreadCount })
+          ? h("span", {
+              class: "silroom-roomRailBadge is-unread is-dot",
+              title: "未読あり",
+              ariaLabel: "未読あり",
+              text: "",
+            })
           : null,
       ]
     );
@@ -1499,6 +1629,13 @@
       };
     }
 
+    if (spaceKey === "my") {
+      return {
+        title: "マイチャットはありません",
+        body: "Chatwork側でマイチャットが見つかると、この専用枠に表示されます。",
+      };
+    }
+
     return {
       title: "該当するチャットはありません",
       body: "別のスペースかフィルターを選ぶと表示されます。",
@@ -1522,6 +1659,7 @@
           h("div", { class: "silroom-panelTitleBlock" }, [
             h("h2", { class: "silroom-panelTitle", text: currentSpace?.label || "全体" }),
           ]),
+          currentSpace?.key === "all" ? renderAllBadgeToggle() : null,
           currentSpace?.kind === "workspace" && getWorkspaceIcon(currentSpace)
             ? h(
                 "button",
@@ -1897,6 +2035,12 @@
 
     if (action === "toggle-enabled") {
       await storage.set({ enabled: !settings.enabled });
+      render();
+      return;
+    }
+
+    if (action === "toggle-all-badge") {
+      await storage.set({ allBadgeEnabled: !settings.allBadgeEnabled });
       render();
       return;
     }

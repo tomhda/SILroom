@@ -14,8 +14,12 @@
   --silroom-text: #eef5ff;
   --silroom-muted: #9fb3d1;
   --silroom-dim: #6f86aa;
-  --silroom-mention: #22c98b;
-  --silroom-unread: #63a4ff;
+  --silroom-mention: #19e58f;
+  --silroom-unread: #7d8ca6;
+  --silroom-mention-soft: rgba(25, 229, 143, 0.18);
+  --silroom-unread-soft: rgba(125, 140, 166, 0.1);
+  --silroom-mention-text: #b8ffe4;
+  --silroom-unread-text: #aebbd0;
   --silroom-focus: #6aa7ff;
   --silroom-danger: #f97066;
   /* Stay above the room list, but below Chatwork composer menus. */
@@ -214,6 +218,7 @@
 .silroom-railItem,
 .silroom-iconButton,
 .silroom-filterButton,
+.silroom-toggleButton,
 .silroom-dmToggle,
 .silroom-overviewTab {
   appearance: none;
@@ -353,6 +358,16 @@
 
 .silroom-railBadge.is-unread {
   background: var(--silroom-unread);
+}
+
+.silroom-railBadge.is-dot {
+  color: transparent;
+  height: 10px;
+  min-width: 10px;
+  padding: 0;
+  right: 7px;
+  top: 4px;
+  width: 10px;
 }
 
 .silroom-panel {
@@ -509,6 +524,15 @@
   background: var(--silroom-unread);
 }
 
+.silroom-roomRailBadge.is-dot {
+  height: 9px;
+  min-width: 9px;
+  padding: 0;
+  right: 2px;
+  top: 2px;
+  width: 9px;
+}
+
 .silroom-panelHeader {
   align-items: center;
   border-bottom: 1px solid var(--silroom-border);
@@ -573,6 +597,67 @@
 
 .silroom-logoResetButton {
   min-width: 34px;
+}
+
+.silroom-toggleButton {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--silroom-border);
+  border-radius: 7px;
+  color: var(--silroom-muted);
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 6px;
+  height: 30px;
+  padding: 0 8px;
+}
+
+.silroom-toggleButton:hover,
+.silroom-toggleButton:focus-visible {
+  border-color: rgba(106, 167, 255, 0.5);
+  color: var(--silroom-text);
+  outline: none;
+}
+
+.silroom-toggleButton.is-on {
+  background: rgba(34, 201, 139, 0.14);
+  border-color: rgba(34, 201, 139, 0.42);
+  color: #caffea;
+}
+
+.silroom-toggleTrack {
+  background: rgba(148, 163, 184, 0.38);
+  border-radius: 999px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 14px;
+  padding: 2px;
+  transition: background 140ms ease;
+  width: 26px;
+}
+
+.silroom-toggleKnob {
+  background: #f8fafc;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.26);
+  height: 10px;
+  transform: translateX(0);
+  transition: transform 140ms ease;
+  width: 10px;
+}
+
+.silroom-toggleButton.is-on .silroom-toggleTrack {
+  background: var(--silroom-mention);
+}
+
+.silroom-toggleButton.is-on .silroom-toggleKnob {
+  transform: translateX(12px);
+}
+
+.silroom-toggleText {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
 }
 
 .silroom-spaceLogoButton {
@@ -739,7 +824,19 @@
 }
 
 .silroom-roomRow.has-mention {
-  background-image: linear-gradient(90deg, rgba(34, 201, 139, 0.14), transparent 55%);
+  background-image: linear-gradient(90deg, var(--silroom-mention-soft), transparent 55%);
+}
+
+.silroom-roomRow.has-unread:not(.has-mention) {
+  background-image: linear-gradient(90deg, var(--silroom-unread-soft), transparent 55%);
+}
+
+.silroom-roomRow.has-mention .silroom-roomMetaText {
+  color: var(--silroom-mention-text);
+}
+
+.silroom-roomRow.has-unread:not(.has-mention) .silroom-roomMetaText {
+  color: var(--silroom-unread-text);
 }
 
 .silroom-roomAvatar {
@@ -836,6 +933,14 @@
 
 .silroom-badge.is-unread {
   background: var(--silroom-unread);
+}
+
+.silroom-badge.is-dot {
+  height: 9px;
+  min-width: 9px;
+  opacity: 0.82;
+  padding: 0;
+  width: 9px;
 }
 
 .silroom-dmToggle {
