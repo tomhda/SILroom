@@ -128,12 +128,16 @@ if (/(tooltip|popover|emoji|mention|suggest|autocomplete|balloon)/.test(modalLay
 }
 
 for (const token of [
-  "const mentionCount = badges.mention;",
-  "const unreadCount = badges.unread;",
+  "const mentionCount = Math.max(badges.mention, apiMentionCount);",
+  "const unreadCount = Math.max(apiMentionCount > 0 && badges.mention === 0 ? 0 : badges.unread, apiUnreadCount);",
   "const targetRooms = isWorkspaceSpace(spaceKey) ? mergeRoomsById(liveRooms, cachedRooms) : liveRooms;",
   "const nativeStats = getNativeWorkspaceStats(spaceKey);",
   "mention: Math.max(roomStats.mention, nativeStats.mention)",
   "title: `自分宛 ${room.mentionCount}`",
+  "const rowHasMentionSignal = (row)",
+  "hasMentionSignal(markerLine) || context.hasMentionSignal",
+  "const apiMentionCount = toNumber(apiRoom?.mention_num);",
+  "apiMentionCount > 0 && badges.mention === 0 ? 0 : badges.unread",
 ]) {
   if (!contentSource.includes(token)) {
     throw new Error(`Missing distributed notification token: ${token}`);
@@ -195,6 +199,8 @@ for (const token of [
 const fixtureSource = read("tests/fixtures/chatwork-like.html");
 for (const token of [
   'aria-label="自分宛 2"',
+  'data-chatwork-to-me="true"',
+  'aria-label="未読 1"',
   'data-workspace="サンプルA"',
   'data-workspace="サンプルB"',
 ]) {

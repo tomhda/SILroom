@@ -5,7 +5,7 @@
     name: "SILroom",
     rootId: "silroom-root",
     shellId: "silroom-shell",
-    version: "0.1.1",
+    version: "0.1.2",
     storageKey: "silroomSettings",
     iconsKey: "silroomWorkspaceIcons",
     workspaceStateKey: "silroomWorkspaceState",
@@ -722,7 +722,38 @@
     return Boolean(rgb && rgb[1] > rgb[0] + 24 && rgb[1] > rgb[2] + 8);
   };
 
-  const classifyBadge = (element) => {
+  const getElementSignalLine = (element) => {
+    const className = typeof element.className === "string" ? element.className : "";
+    const attributeLine = Array.from(element.attributes || [])
+      .map((attribute) => `${attribute.name} ${attribute.value}`)
+      .join(" ");
+    const datasetLine = Object.entries(element.dataset || {})
+      .map(([key, value]) => `${key} ${value}`)
+      .join(" ");
+    return `${className} ${attributeLine} ${datasetLine}`.toLowerCase();
+  };
+
+  const hasMentionSignal = (value) =>
+    /mention|to[-_ ]?me|to[-_ ]?user|自分宛|自分宛て|あなた宛|自分への/.test(String(value || "").toLowerCase());
+
+  const hasUnreadSignal = (value) => /unread|未読/.test(String(value || "").toLowerCase());
+
+  const isTinyMentionMarker = (element) => {
+    const text = normalizeText(element.innerText || element.textContent);
+    if (!/^(to|TO|自分宛|自分宛て)$/.test(text)) {
+      return false;
+    }
+
+    const rect = element.getBoundingClientRect();
+    return rect.width <= 42 && rect.height <= 28;
+  };
+
+  const rowHasMentionSignal = (row) =>
+    [row, ...Array.from(row.querySelectorAll("*"))].some(
+      (element) => hasMentionSignal(getElementSignalLine(element)) || isTinyMentionMarker(element)
+    );
+
+  const classifyBadge = (element, context = {}) => {
     const text = normalizeText(element.innerText || element.textContent);
     const value = numberFromText(text);
 
@@ -731,23 +762,10 @@
     }
 
     const style = getComputedStyle(element);
-    const className = typeof element.className === "string" ? element.className : "";
-    const markerLine = [
-      className,
-      element.getAttribute("aria-label") || "",
-      element.getAttribute("title") || "",
-      element.dataset?.type || "",
-      element.dataset?.kind || "",
-    ]
-      .join(" ")
-      .toLowerCase();
+    const markerLine = getElementSignalLine(element);
     const colorLine = `${style.backgroundColor} ${style.color} ${markerLine}`.toLowerCase();
-    const isExplicitMention =
-      markerLine.includes("mention") ||
-      markerLine.includes("to-me") ||
-      markerLine.includes("to_me") ||
-      markerLine.includes("自分宛");
-    const isExplicitUnread = markerLine.includes("unread") || markerLine.includes("未読");
+    const isExplicitMention = hasMentionSignal(markerLine) || context.hasMentionSignal;
+    const isExplicitUnread = hasUnreadSignal(markerLine) && !isExplicitMention;
     const isMention =
       isExplicitMention ||
       (!isExplicitUnread &&
@@ -765,6 +783,7 @@
   };
 
   const extractBadges = (row) => {
+    const hasMentionContext = rowHasMentionSignal(row);
     const candidates = Array.from(row.querySelectorAll("*")).filter((element) => {
       const rect = element.getBoundingClientRect();
       const text = normalizeText(element.innerText || element.textContent);
@@ -774,7 +793,7 @@
     const totals = { mention: 0, unread: 0 };
 
     candidates.forEach((element) => {
-      const badge = classifyBadge(element);
+      const badge = classifyBadge(element, { hasMentionSignal: hasMentionContext });
       if (!badge) {
         return;
       }
@@ -824,8 +843,10 @@
         const avatarSrc = apiRoom?.icon_path || img?.getAttribute("src") || "";
         const active = row.id === currentRid || row.getAttribute("aria-selected") === "true";
         const badges = extractBadges(row);
-        const mentionCount = badges.mention;
-        const unreadCount = badges.unread;
+        const apiMentionCount = toNumber(apiRoom?.mention_num);
+        const apiUnreadCount = Math.max(0, toNumber(apiRoom?.unread_num) - apiMentionCount);
+        const mentionCount = Math.max(badges.mention, apiMentionCount);
+        const unreadCount = Math.max(apiMentionCount > 0 && badges.mention === 0 ? 0 : badges.unread, apiUnreadCount);
         const room = {
           id: row.id,
           name,
