@@ -33,6 +33,20 @@
 :root.silroom-enabled,
 :root.silroom-enabled body {
   overflow-x: hidden !important;
+  overscroll-behavior: none !important;
+}
+
+:root.silroom-enabled body {
+  overflow-y: hidden !important;
+}
+
+:root.silroom-enabled #_content,
+:root.silroom-enabled #_mainContent,
+:root.silroom-enabled .roomMainContent__currentSelectedRoom,
+:root.silroom-enabled #CurrentSelectedRoom,
+:root.silroom-enabled #_chatContent,
+:root.silroom-enabled #_subContentArea {
+  overscroll-behavior: contain !important;
 }
 
 :root.silroom-enabled #_sideContent > * {

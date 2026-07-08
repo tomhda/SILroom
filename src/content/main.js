@@ -2259,6 +2259,69 @@
     getRoot().querySelector(".silroom-railHoverLabel")?.classList.remove("is-visible");
   };
 
+  const isScrollableY = (node) => {
+    if (!(node instanceof HTMLElement)) {
+      return false;
+    }
+
+    const style = getComputedStyle(node);
+    if (!/(auto|scroll|overlay)/.test(`${style.overflowY} ${style.overflow}`)) {
+      return false;
+    }
+
+    return node.scrollHeight - node.clientHeight > 1;
+  };
+
+  const getScrollableYAncestor = (target, stopNode) => {
+    let node = target instanceof Element ? target : target?.parentElement;
+    while (node && node !== document.body && node !== document.documentElement) {
+      if (isScrollableY(node)) {
+        return node;
+      }
+      if (node === stopNode) {
+        break;
+      }
+      node = node.parentElement;
+    }
+    return null;
+  };
+
+  const handleMainOverscroll = (event) => {
+    if (
+      !settings.enabled ||
+      event.defaultPrevented ||
+      event.ctrlKey ||
+      event.deltaY === 0 ||
+      Math.abs(event.deltaX) > Math.abs(event.deltaY)
+    ) {
+      return;
+    }
+
+    const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+    const mainContent = document.querySelector(SELECTORS.mainContent);
+    if (!target || !mainContent || getRoot().contains(target) || !mainContent.contains(target)) {
+      return;
+    }
+
+    const scrollable = getScrollableYAncestor(target, mainContent);
+    if (!scrollable) {
+      event.preventDefault();
+      return;
+    }
+
+    const maxScrollTop = scrollable.scrollHeight - scrollable.clientHeight;
+    if (maxScrollTop <= 1) {
+      event.preventDefault();
+      return;
+    }
+
+    const atTop = scrollable.scrollTop <= 0;
+    const atBottom = scrollable.scrollTop >= maxScrollTop - 1;
+    if ((event.deltaY < 0 && atTop) || (event.deltaY > 0 && atBottom)) {
+      event.preventDefault();
+    }
+  };
+
   const handleRailLabelEvent = (event) => {
     const railItem = event.target.closest?.(".silroom-railItem");
     if (!railItem || !getRoot().contains(railItem)) {
@@ -2663,6 +2726,7 @@
         clearRailDropIndicators();
       }
     });
+    document.addEventListener("wheel", handleMainOverscroll, { capture: true, passive: false });
     window.addEventListener("hashchange", () => {
       debounceRender(20);
       scheduleInteractiveApiRefresh(250);

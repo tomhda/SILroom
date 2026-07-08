@@ -142,15 +142,40 @@
       }
 
       .roomMainContent__currentSelectedRoom {
+        min-height: 0;
         min-width: 0;
+        overflow: hidden;
+        position: relative;
+      }
+
+      #CurrentSelectedRoom {
+        height: 100%;
+        min-height: 0;
         position: relative;
       }
 
       #_chatContent {
         background: #111827;
+        box-sizing: border-box;
         height: 100%;
         min-width: 0;
-        padding: 28px;
+        overflow: auto;
+        padding: 28px 28px 124px;
+      }
+
+      .fixture-messageStack {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        min-height: 1500px;
+      }
+
+      .fixture-messageStack p {
+        background: #1f2d46;
+        border: 1px solid #2f4161;
+        border-radius: 8px;
+        margin: 0;
+        padding: 14px 16px;
       }
 
       #_chatSendArea {
@@ -240,7 +265,13 @@
         <div class="roomMainContent__roomHeader">【SAMPLE】サンプル共有ルーム</div>
         <div class="roomMainContent__currentSelectedRoom">
           <div id="CurrentSelectedRoom">
-            <div id="_chatContent">本文エリア</div>
+            <div id="_chatContent">
+              <div class="fixture-messageStack">
+                <p>本文エリア</p>
+                <p>スクロール検証用の本文ブロック</p>
+                <p>チャット欄の最下部テスト</p>
+              </div>
+            </div>
             <div id="_chatSendArea">送信エリア</div>
           </div>
         </div>

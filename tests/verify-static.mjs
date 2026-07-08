@@ -256,6 +256,8 @@ for (const token of [
   'aria-label="サンプルA 自分宛 2"',
   'aria-label="サンプルB 未読 3"',
   '<span class="fixture-badge fixture-badge--unread" aria-label="未読 1"><span><span>1</span></span></span>',
+  ".fixture-messageStack",
+  "チャット欄の最下部テスト",
 ]) {
   if (!fixtureSource.includes(token)) {
     throw new Error(`Fixture must cover duplicate badge/category extraction: ${token}`);
@@ -312,6 +314,18 @@ if (!css.includes(":root.silroom-enabled #_chatSendArea:hover")) {
 
 if (!css.includes(":root.silroom-chatwork-modal-open #silroom-shell")) {
   throw new Error("Chatwork modal overlay yield rule is missing.");
+}
+
+for (const token of [
+  "overscroll-behavior: none !important;",
+  ":root.silroom-enabled #_chatContent",
+  "overscroll-behavior: contain !important;",
+  "const handleMainOverscroll = (event) =>",
+  'document.addEventListener("wheel", handleMainOverscroll, { capture: true, passive: false })',
+]) {
+  if (!contentSource.includes(token) && !css.includes(token)) {
+    throw new Error(`Missing overscroll guard token: ${token}`);
+  }
 }
 
 console.log(
