@@ -5,7 +5,7 @@
     name: "SILroom",
     rootId: "silroom-root",
     shellId: "silroom-shell",
-    version: "0.1.4",
+    version: "0.1.5",
     storageKey: "silroomSettings",
     iconsKey: "silroomWorkspaceIcons",
     workspaceStateKey: "silroomWorkspaceState",
@@ -30,6 +30,7 @@
     panelWidth: 302,
     density: "comfortable",
     manualTypes: {},
+    manualWorkspaces: {},
     workspaceIcons: {},
     workspaceOrder: [],
     allBadgeEnabled: false,
@@ -106,6 +107,7 @@
   let spaceRoomCache = new Map();
   let pendingWorkspaceLoad = { key: "", startedAt: 0 };
   let draggingWorkspaceLabel = "";
+  let roomMenuState = { roomId: "", x: 0, y: 0 };
   let suppressRailClickUntil = 0;
   let panelResizeState = null;
   let renderTimer = 0;
@@ -220,9 +222,13 @@
         });
       }
 
-      localStorage.setItem(APP.storageKey, JSON.stringify(storageSettings));
-      if (iconsChanged) {
-        localStorage.setItem(APP.iconsKey, JSON.stringify(settings.workspaceIcons || {}));
+      try {
+        localStorage.setItem(APP.storageKey, JSON.stringify(storageSettings));
+        if (iconsChanged) {
+          localStorage.setItem(APP.iconsKey, JSON.stringify(settings.workspaceIcons || {}));
+        }
+      } catch {
+        return undefined;
       }
       return undefined;
     },
@@ -236,7 +242,11 @@
         });
       }
 
-      localStorage.setItem(APP.workspaceStateKey, JSON.stringify(workspaceState));
+      try {
+        localStorage.setItem(APP.workspaceStateKey, JSON.stringify(workspaceState));
+      } catch {
+        return undefined;
+      }
       return undefined;
     },
   };
@@ -558,6 +568,22 @@
       .replace(/\s*[.・…]{2,}\s*$/, "")
       .trim();
 
+  const getTextWithoutNumericBadges = (node) => {
+    const clone = node.cloneNode(true);
+    Array.from(clone.querySelectorAll("*")).forEach((element) => {
+      if (/^\d+$/.test(normalizeText(element.textContent))) {
+        element.remove();
+      }
+    });
+    return normalizeText(clone.textContent);
+  };
+
+  const getNativeCategoryName = (node) => {
+    const visibleText = getTextWithoutNumericBadges(node);
+    const ariaText = normalizeText(node.getAttribute?.("aria-label") || "");
+    return cleanCategoryName(visibleText || ariaText);
+  };
+
   const isUnclassifiedCategoryText = (value) => normalizeText(value).includes("カテゴリー未分類のチャット");
 
   const isNativeCategoryButton = (node) => {
@@ -565,7 +591,7 @@
       return false;
     }
 
-    const text = cleanCategoryName(node.getAttribute("aria-label") || node.innerText || node.textContent);
+    const text = getNativeCategoryName(node);
     if (!text || text.length > 36) {
       return false;
     }
@@ -595,7 +621,7 @@
         if (isUnclassifiedCategoryText(text)) {
           currentWorkspace = "unclassified";
         } else if (isNativeCategoryButton(child)) {
-          currentWorkspace = cleanCategoryName(text);
+          currentWorkspace = getNativeCategoryName(child);
         }
 
         visit(child);
@@ -692,6 +718,11 @@
   };
 
   const inferWorkspace = (room) => {
+    const manualWorkspace = settings.manualWorkspaces?.[room.id];
+    if (manualWorkspace) {
+      return manualWorkspace;
+    }
+
     if (room.type === "dm") {
       return "dm";
     }
@@ -782,17 +813,32 @@
     };
   };
 
+  const getBadgeCandidate = (element) => {
+    const rect = element.getBoundingClientRect();
+    const text = normalizeText(element.innerText || element.textContent);
+
+    if (rect.width > 42 || rect.height > 28 || !/^\d+$/.test(text)) {
+      return null;
+    }
+
+    return { element, text };
+  };
+
+  const hasNestedBadgeCandidate = (candidate, candidates) =>
+    candidates.some(
+      (other) => other !== candidate && candidate.text === other.text && candidate.element.contains(other.element)
+    );
+
   const extractBadges = (row) => {
     const hasMentionContext = rowHasMentionSignal(row);
-    const candidates = Array.from(row.querySelectorAll("*")).filter((element) => {
-      const rect = element.getBoundingClientRect();
-      const text = normalizeText(element.innerText || element.textContent);
-      return rect.width <= 42 && rect.height <= 28 && /^\d+$/.test(text);
-    });
+    const candidates = Array.from(row.querySelectorAll("*"))
+      .map(getBadgeCandidate)
+      .filter(Boolean)
+      .filter((candidate, _index, allCandidates) => !hasNestedBadgeCandidate(candidate, allCandidates));
 
     const totals = { mention: 0, unread: 0 };
 
-    candidates.forEach((element) => {
+    candidates.forEach(({ element }) => {
       const badge = classifyBadge(element, { hasMentionSignal: hasMentionContext });
       if (!badge) {
         return;
@@ -912,7 +958,7 @@
 
     const categoryNames = Array.from(listArea.querySelectorAll('[role="button"]'))
       .filter(isNativeCategoryButton)
-      .map((node) => cleanCategoryName(node.getAttribute("aria-label") || node.innerText || node.textContent))
+      .map(getNativeCategoryName)
       .filter(Boolean);
 
     return Array.from(new Set(categoryNames));
@@ -1028,8 +1074,11 @@
     const mappedNames = Object.values(workspaceState.roomWorkspace || {})
       .map((entry) => entry?.workspace)
       .filter(Boolean);
+    const manualNames = Object.values(settings.manualWorkspaces || {}).filter(
+      (name) => name && !["dm", "my", "unclassified"].includes(name)
+    );
 
-    return Array.from(new Set([...categoryNames, ...learnedNames, ...mappedNames]));
+    return Array.from(new Set([...categoryNames, ...learnedNames, ...mappedNames, ...manualNames]));
   };
 
   const buildSpaces = () => {
@@ -1286,7 +1335,7 @@
     const workspaceLabel = spaceKey.replace("workspace:", "");
     const categoryButton = Array.from(listArea.querySelectorAll('[role="button"]'))
       .filter(isNativeCategoryButton)
-      .find((node) => cleanCategoryName(node.getAttribute("aria-label") || node.innerText || node.textContent) === workspaceLabel);
+      .find((node) => getNativeCategoryName(node) === workspaceLabel);
 
     return categoryButton ? extractBadges(categoryButton) : null;
   };
@@ -1532,8 +1581,9 @@
   };
 
   const renderRoomRow = (room) => {
-    const manual = settings.manualTypes?.[room.id] || "";
-    const metaText = getRoomMetaText(room, manual);
+    const manualType = settings.manualTypes?.[room.id] || "";
+    const manualWorkspace = settings.manualWorkspaces?.[room.id] || "";
+    const metaText = getRoomMetaText(room, manualType || manualWorkspace);
 
     return h(
       "div",
@@ -1568,9 +1618,10 @@
             {
               class: `silroom-dmToggle${room.type === "dm" ? " is-dm" : ""}`,
               type: "button",
-              title: room.type === "dm" ? "通常チャット扱いにする" : "DM扱いにする",
-              ariaLabel: room.type === "dm" ? "通常チャット扱いにする" : "DM扱いにする",
-              dataAction: "toggle-dm-type",
+              title: "分類を変更",
+              ariaLabel: "分類を変更",
+              ariaHaspopup: "menu",
+              dataAction: "open-room-menu",
               dataRoomId: room.id,
             },
             ["分類"]
@@ -1611,6 +1662,78 @@
           : null,
       ]
     );
+
+  const getRoomMenuValue = (room) => {
+    if (room.type === "dm") {
+      return "dm";
+    }
+    if (room.workspace === "unclassified") {
+      return "unclassified";
+    }
+    if (room.workspace && !["dm", "my"].includes(room.workspace)) {
+      return `workspace:${room.workspace}`;
+    }
+    return "room";
+  };
+
+  const renderRoomMenuOption = (room, value, label) => {
+    const isCurrent = getRoomMenuValue(room) === value;
+    const hasManual = Boolean(settings.manualTypes?.[room.id] || settings.manualWorkspaces?.[room.id]);
+    const selected = value === "auto" ? !hasManual : hasManual && isCurrent;
+
+    return h(
+      "button",
+      {
+        class: `silroom-roomMenuOption${selected ? " is-selected" : ""}`,
+        type: "button",
+        role: "menuitem",
+        dataAction: "assign-room-category",
+        dataRoomId: room.id,
+        dataCategory: value,
+      },
+      [
+        h("span", { class: "silroom-roomMenuOptionText", text: label }),
+        selected ? h("span", { class: "silroom-roomMenuCurrent", text: "現在" }) : null,
+      ]
+    );
+  };
+
+  const renderRoomContextMenu = () => {
+    if (!roomMenuState.roomId) {
+      return null;
+    }
+
+    const room = rooms.find((item) => item.id === roomMenuState.roomId);
+    if (!room) {
+      return null;
+    }
+
+    const workspaceOptions = spaces.filter((space) => space.kind === "workspace");
+    const viewportWidth = document.documentElement.clientWidth || window.innerWidth || 1280;
+    const viewportHeight = document.documentElement.clientHeight || window.innerHeight || 720;
+    const left = clamp(roomMenuState.x, 8, Math.max(8, viewportWidth - 240));
+    const top = clamp(roomMenuState.y, 56, Math.max(56, viewportHeight - 320));
+
+    return h(
+      "div",
+      {
+        class: "silroom-roomMenu",
+        role: "menu",
+        style: `left: ${left}px; top: ${top}px;`,
+      },
+      [
+        h("div", { class: "silroom-roomMenuHeader", text: room.name }),
+        renderRoomMenuOption(room, "auto", "自動判定に戻す"),
+        renderRoomMenuOption(room, "room", "通常チャット"),
+        renderRoomMenuOption(room, "dm", "DM"),
+        renderRoomMenuOption(room, "unclassified", "未分類"),
+        workspaceOptions.length
+          ? h("div", { class: "silroom-roomMenuGroup", text: "ワークスペース" })
+          : null,
+        ...workspaceOptions.map((space) => renderRoomMenuOption(room, `workspace:${space.label}`, space.label)),
+      ]
+    );
+  };
 
   const renderRoomRail = (visibleRooms, currentSpace) =>
     h("div", { class: "silroom-roomRail", ariaLabel: "SILroom compact room list" }, [
@@ -1811,7 +1934,8 @@
               dataAction: "resize-panel",
             }),
       ]),
-      renderOverviewTab()
+      renderOverviewTab(),
+      renderRoomContextMenu()
     );
     restoreRenderState(renderState, nextListKey);
     lastRenderedListKey = nextListKey;
@@ -1922,21 +2046,57 @@
     }, 3200);
   };
 
-  const toggleManualType = async (roomId) => {
-    const target = rooms.find((room) => room.id === roomId);
-    const manualTypes = { ...(settings.manualTypes || {}) };
-
-    if (!target) {
+  const closeRoomMenu = (shouldRender = true) => {
+    if (!roomMenuState.roomId) {
       return;
     }
 
-    if (target.type === "dm") {
-      manualTypes[roomId] = "room";
-    } else {
-      manualTypes[roomId] = "dm";
+    roomMenuState = { roomId: "", x: 0, y: 0 };
+    if (shouldRender) {
+      render();
+    }
+  };
+
+  const openRoomMenu = (roomId, x, y) => {
+    if (!rooms.some((room) => room.id === roomId)) {
+      return;
     }
 
-    await storage.set({ manualTypes });
+    roomMenuState = { roomId, x, y };
+    render();
+  };
+
+  const assignRoomCategory = async (roomId, category) => {
+    const target = rooms.find((room) => room.id === roomId);
+    if (!target) {
+      closeRoomMenu();
+      return;
+    }
+
+    const manualTypes = { ...(settings.manualTypes || {}) };
+    const manualWorkspaces = { ...(settings.manualWorkspaces || {}) };
+
+    delete manualTypes[roomId];
+    delete manualWorkspaces[roomId];
+
+    if (category === "dm") {
+      manualTypes[roomId] = "dm";
+    } else if (category === "room") {
+      manualTypes[roomId] = "room";
+    } else if (category === "unclassified") {
+      manualTypes[roomId] = "room";
+      manualWorkspaces[roomId] = "unclassified";
+    } else if (category?.startsWith("workspace:")) {
+      const workspaceLabel = category.replace("workspace:", "");
+      manualTypes[roomId] = "room";
+      manualWorkspaces[roomId] = workspaceLabel;
+      if (rememberRoomWorkspace({ ...target, type: "room", workspace: workspaceLabel }, workspaceLabel)) {
+        await storage.setWorkspaceState(workspaceState);
+      }
+    }
+
+    closeRoomMenu(false);
+    await storage.set({ manualTypes, manualWorkspaces });
     render();
   };
 
@@ -1995,10 +2155,16 @@
     const actionNode = event.target.closest("[data-action]");
 
     if (!actionNode || !getRoot().contains(actionNode)) {
+      if (roomMenuState.roomId && getRoot().contains(event.target)) {
+        closeRoomMenu();
+      }
       return;
     }
 
     const { action } = actionNode.dataset;
+    if (roomMenuState.roomId && action !== "open-room-menu" && action !== "assign-room-category") {
+      closeRoomMenu(false);
+    }
 
     if (action === "select-space" && Date.now() < suppressRailClickUntil) {
       event.preventDefault();
@@ -2045,9 +2211,16 @@
       return;
     }
 
-    if (action === "toggle-dm-type") {
+    if (action === "open-room-menu") {
       event.stopPropagation();
-      await toggleManualType(actionNode.dataset.roomId);
+      const rect = actionNode.getBoundingClientRect();
+      openRoomMenu(actionNode.dataset.roomId, rect.right - 8, rect.bottom + 4);
+      return;
+    }
+
+    if (action === "assign-room-category") {
+      event.stopPropagation();
+      await assignRoomCategory(actionNode.dataset.roomId, actionNode.dataset.category);
       return;
     }
 
@@ -2057,8 +2230,20 @@
     }
 
     if (action === "select-room") {
+      closeRoomMenu(false);
       selectRoom(actionNode.dataset.roomId);
     }
+  };
+
+  const handleContextMenu = (event) => {
+    const roomNode = event.target.closest("[data-room-id]");
+    if (!roomNode || !getRoot().contains(roomNode)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    openRoomMenu(roomNode.dataset.roomId, event.clientX, event.clientY);
   };
 
   const showRailHoverLabel = (railItem) => {
@@ -2315,6 +2500,12 @@
   };
 
   const handleKeydown = (event) => {
+    if (event.key === "Escape" && roomMenuState.roomId) {
+      event.preventDefault();
+      closeRoomMenu();
+      return;
+    }
+
     const row = event.target.closest('[data-action="select-room"]');
     if (!row) {
       return;
@@ -2467,6 +2658,7 @@
     initialized = true;
 
     getRoot().addEventListener("click", handleClick);
+    getRoot().addEventListener("contextmenu", handleContextMenu);
     getRoot().addEventListener("mousedown", handleMouseDown);
     getRoot().addEventListener("change", handleChange);
     getRoot().addEventListener("keydown", handleKeydown);

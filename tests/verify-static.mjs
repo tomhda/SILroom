@@ -229,6 +229,29 @@ for (const token of [
   }
 }
 
+for (const token of [
+  "manualWorkspaces: {}",
+  "const getTextWithoutNumericBadges = (node) =>",
+  "const getNativeCategoryName = (node) =>",
+  "dataAction: \"open-room-menu\"",
+  "dataAction: \"assign-room-category\"",
+  "getRoot().addEventListener(\"contextmenu\", handleContextMenu)",
+]) {
+  if (!contentSource.includes(token)) {
+    throw new Error(`Missing room categorization token: ${token}`);
+  }
+}
+
+for (const token of [
+  'aria-label="サンプルA 自分宛 2"',
+  'aria-label="サンプルB 未読 3"',
+  '<span class="fixture-badge fixture-badge--unread" aria-label="未読 1"><span><span>1</span></span></span>',
+]) {
+  if (!fixtureSource.includes(token)) {
+    throw new Error(`Fixture must cover duplicate badge/category extraction: ${token}`);
+  }
+}
+
 if (!/const BADGELESS_SPACE_KEYS = new Set\(\["fixed", "unclassified"\]\);/.test(contentSource)) {
   throw new Error("Fixed and unclassified spaces must not show rail notification badges.");
 }
