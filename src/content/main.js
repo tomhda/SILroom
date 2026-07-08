@@ -5,7 +5,7 @@
     name: "SILroom",
     rootId: "silroom-root",
     shellId: "silroom-shell",
-    version: "0.1.5",
+    version: "0.1.6",
     storageKey: "silroomSettings",
     iconsKey: "silroomWorkspaceIcons",
     workspaceStateKey: "silroomWorkspaceState",
@@ -1723,7 +1723,7 @@
       },
       [
         h("div", { class: "silroom-roomMenuHeader", text: room.name }),
-        renderRoomMenuOption(room, "auto", "自動判定に戻す"),
+        renderRoomMenuOption(room, "auto", "自動判定"),
         renderRoomMenuOption(room, "room", "通常チャット"),
         renderRoomMenuOption(room, "dm", "DM"),
         renderRoomMenuOption(room, "unclassified", "未分類"),
@@ -2235,17 +2235,6 @@
     }
   };
 
-  const handleContextMenu = (event) => {
-    const roomNode = event.target.closest("[data-room-id]");
-    if (!roomNode || !getRoot().contains(roomNode)) {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-    openRoomMenu(roomNode.dataset.roomId, event.clientX, event.clientY);
-  };
-
   const showRailHoverLabel = (railItem) => {
     const rail = getRoot().querySelector(".silroom-rail");
     const label = getRoot().querySelector(".silroom-railHoverLabel");
@@ -2658,7 +2647,6 @@
     initialized = true;
 
     getRoot().addEventListener("click", handleClick);
-    getRoot().addEventListener("contextmenu", handleContextMenu);
     getRoot().addEventListener("mousedown", handleMouseDown);
     getRoot().addEventListener("change", handleChange);
     getRoot().addEventListener("keydown", handleKeydown);

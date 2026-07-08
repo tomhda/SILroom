@@ -235,10 +235,20 @@ for (const token of [
   "const getNativeCategoryName = (node) =>",
   "dataAction: \"open-room-menu\"",
   "dataAction: \"assign-room-category\"",
-  "getRoot().addEventListener(\"contextmenu\", handleContextMenu)",
+  "renderRoomMenuOption(room, \"auto\", \"自動判定\")",
 ]) {
   if (!contentSource.includes(token)) {
     throw new Error(`Missing room categorization token: ${token}`);
+  }
+}
+
+for (const token of [
+  "getRoot().addEventListener(\"contextmenu\"",
+  "const handleContextMenu =",
+  "自動判定に戻す",
+]) {
+  if (contentSource.includes(token)) {
+    throw new Error(`Room categorization must not use removed right-click behavior/text: ${token}`);
   }
 }
 

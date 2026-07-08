@@ -370,6 +370,24 @@
   width: 10px;
 }
 
+.silroom-railItem.is-draggable .silroom-railBadge {
+  font-size: 10.5px;
+  height: 18px;
+  min-width: 18px;
+  padding: 0 5px;
+  right: 1px;
+  top: -1px;
+}
+
+.silroom-railItem.is-draggable .silroom-railBadge.is-dot {
+  height: 11px;
+  min-width: 11px;
+  padding: 0;
+  right: 5px;
+  top: 3px;
+  width: 11px;
+}
+
 .silroom-panel {
   background: linear-gradient(180deg, var(--silroom-bg-2), #10192a);
   display: flex;
