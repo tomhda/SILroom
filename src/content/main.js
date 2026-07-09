@@ -65,6 +65,8 @@
   const BADGELESS_SPACE_KEYS = new Set(["fixed", "unclassified"]);
   const WORKSPACE_STATE_TTL = 14 * 24 * 60 * 60 * 1000;
   const WORKSPACE_SYNC_STALE_MS = 6 * 60 * 60 * 1000;
+  const WORKSPACE_NATIVE_STABLE_MS = 1800;
+  const WORKSPACE_PENDING_READBACK_MS = 3200;
   const API_REFRESH_INTERACTIVE_INTERVAL = 6000;
 
   const GROUPISH_WORDS = [
@@ -125,6 +127,7 @@
   let observedSubContent = null;
   let nativeWorkspaceSignature = "";
   let nativeWorkspaceStableCount = 0;
+  let nativeWorkspaceStableSince = 0;
   let initialized = false;
 
   const API_REFRESH_MIN_INTERVAL = 30000;
@@ -646,6 +649,29 @@
     return Number.isFinite(number) ? number : 0;
   };
 
+  const isWorkspaceReadbackPending = (now = Date.now()) =>
+    Boolean(pendingWorkspaceLoad.key && now - toNumber(pendingWorkspaceLoad.startedAt) < WORKSPACE_PENDING_READBACK_MS);
+
+  const isNativeWorkspaceSignatureStable = (now = Date.now()) =>
+    Boolean(
+      nativeWorkspaceSignature &&
+        nativeWorkspaceStableCount >= 2 &&
+        now - nativeWorkspaceStableSince >= WORKSPACE_NATIVE_STABLE_MS &&
+        !isWorkspaceReadbackPending(now)
+    );
+
+  const shouldDeferUnclassifiedWorkspaceObservation = (now = Date.now()) =>
+    isWorkspaceReadbackPending(now) || Boolean(nativeWorkspaceSignature && !isNativeWorkspaceSignatureStable(now));
+
+  const scheduleNativeWorkspaceStableRender = (now = Date.now()) => {
+    if (!nativeWorkspaceSignature || isWorkspaceReadbackPending(now)) {
+      return;
+    }
+
+    const delay = Math.max(160, WORKSPACE_NATIVE_STABLE_MS - (now - nativeWorkspaceStableSince) + 80);
+    debounceRender(delay);
+  };
+
   const getPanelWidthValue = () => {
     const width = toNumber(settings.panelWidth) || PANEL_WIDTH.default;
     return clamp(width, PANEL_WIDTH.min, PANEL_WIDTH.max);
@@ -982,14 +1008,14 @@
   };
 
   const choosePreferredDuplicateRoom = (left, right) => {
+    if (Boolean(left.avatarSrc) !== Boolean(right.avatarSrc)) {
+      return left.avatarSrc ? left : right;
+    }
     if (left.domWorkspace === "unclassified" && right.domWorkspace !== "unclassified") {
       return left;
     }
     if (right.domWorkspace === "unclassified" && left.domWorkspace !== "unclassified") {
       return right;
-    }
-    if (Boolean(left.avatarSrc) !== Boolean(right.avatarSrc)) {
-      return left.avatarSrc ? left : right;
     }
     if (Boolean(left.active) !== Boolean(right.active)) {
       return left.active ? left : right;
@@ -1167,6 +1193,10 @@
         return;
       }
 
+      if (room.domWorkspace === "unclassified" && shouldDeferUnclassifiedWorkspaceObservation()) {
+        return;
+      }
+
       changed = rememberRoomWorkspace(room, room.domWorkspace) || changed;
     });
 
@@ -1192,18 +1222,22 @@
     if (nativeNames.length === 0) {
       nativeWorkspaceSignature = "";
       nativeWorkspaceStableCount = 0;
+      nativeWorkspaceStableSince = 0;
       return false;
     }
 
+    const now = Date.now();
     const signature = [...nativeNames].sort().join("\n");
     if (signature === nativeWorkspaceSignature) {
       nativeWorkspaceStableCount += 1;
     } else {
       nativeWorkspaceSignature = signature;
       nativeWorkspaceStableCount = 1;
+      nativeWorkspaceStableSince = now;
     }
 
-    if (nativeWorkspaceStableCount < 2) {
+    if (!isNativeWorkspaceSignatureStable(now)) {
+      scheduleNativeWorkspaceStableRender(now);
       return false;
     }
 
@@ -2098,9 +2132,9 @@
     }
 
     applyStateClasses();
-    rooms = extractRooms();
     const nativeCategoryNames = extractCategoryNames();
     reconcileWorkspaceStateWithNativeCategories(nativeCategoryNames);
+    rooms = extractRooms();
     spaces = buildSpaces(nativeCategoryNames);
 
     if (!spaces.some((space) => space.key === settings.selectedSpace)) {
@@ -2233,7 +2267,7 @@
 
       pendingWorkspaceLoad = { key: "", startedAt: 0 };
       render();
-    }, 3200);
+    }, WORKSPACE_PENDING_READBACK_MS);
   };
 
   const closeRoomMenu = (shouldRender = true) => {
