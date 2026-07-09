@@ -5,7 +5,7 @@
     name: "SILroom",
     rootId: "silroom-root",
     shellId: "silroom-shell",
-    version: "0.1.5",
+    version: "0.1.6",
     storageKey: "silroomSettings",
     iconsKey: "silroomWorkspaceIcons",
     workspaceStateKey: "silroomWorkspaceState",
@@ -123,6 +123,8 @@
   let floatingLayerObserver = null;
   let observedRoomListArea = null;
   let observedSubContent = null;
+  let nativeWorkspaceSignature = "";
+  let nativeWorkspaceStableCount = 0;
   let initialized = false;
 
   const API_REFRESH_MIN_INTERVAL = 30000;
@@ -881,7 +883,7 @@
 
     const domWorkspaceMap = extractDomWorkspaceMap(listArea);
 
-    const domRooms = Array.from(listArea.querySelectorAll('li[role="tab"][id]'))
+    const rawDomRooms = Array.from(listArea.querySelectorAll('li[role="tab"][id]'))
       .map((row, index) => {
         const apiRoom = apiRoomsById.get(String(row.id));
         const name = normalizeText(row.getAttribute("aria-label") || row.innerText || row.textContent || apiRoom?.name);
@@ -914,6 +916,7 @@
         return room;
       })
       .filter((room) => room.id && room.name);
+    const domRooms = dedupeDomRoomsById(rawDomRooms);
 
     rememberWorkspaceObservations(domRooms);
 
@@ -949,6 +952,50 @@
         return room;
       })
       .filter((room) => room.id && room.name);
+
+  const dedupeDomRoomsById = (roomList) => {
+    const byId = new Map();
+
+    roomList.forEach((room) => {
+      const id = String(room.id);
+      const previous = byId.get(id);
+      byId.set(id, previous ? mergeDuplicateDomRooms(previous, room) : room);
+    });
+
+    return Array.from(byId.values()).sort((a, b) => a.sourceIndex - b.sourceIndex);
+  };
+
+  const mergeDuplicateDomRooms = (left, right) => {
+    const preferred = choosePreferredDuplicateRoom(left, right);
+    const other = preferred === left ? right : left;
+
+    return {
+      ...preferred,
+      avatarSrc: preferred.avatarSrc || other.avatarSrc || "",
+      mentionCount: Math.max(toNumber(left.mentionCount), toNumber(right.mentionCount)),
+      unreadCount: Math.max(toNumber(left.unreadCount), toNumber(right.unreadCount)),
+      pinned: Boolean(left.pinned || right.pinned),
+      active: Boolean(left.active || right.active),
+      sourceIndex: Math.min(toNumber(left.sourceIndex), toNumber(right.sourceIndex)),
+      lastUpdateTime: Math.max(toNumber(left.lastUpdateTime), toNumber(right.lastUpdateTime)),
+    };
+  };
+
+  const choosePreferredDuplicateRoom = (left, right) => {
+    if (left.domWorkspace === "unclassified" && right.domWorkspace !== "unclassified") {
+      return left;
+    }
+    if (right.domWorkspace === "unclassified" && left.domWorkspace !== "unclassified") {
+      return right;
+    }
+    if (Boolean(left.avatarSrc) !== Boolean(right.avatarSrc)) {
+      return left.avatarSrc ? left : right;
+    }
+    if (Boolean(left.active) !== Boolean(right.active)) {
+      return left.active ? left : right;
+    }
+    return toNumber(left.sourceIndex) <= toNumber(right.sourceIndex) ? left : right;
+  };
 
   const extractCategoryNames = () => {
     const listArea = document.querySelector(SELECTORS.roomListArea);
@@ -1000,9 +1047,68 @@
 
     entry.roomIds = entry.roomIds.filter((id) => String(id) !== String(roomId));
     entry.updatedAt = Date.now();
+    if (entry.roomIds.length === 0) {
+      delete workspaceState.workspaceRooms[workspaceLabel];
+    }
+  };
+
+  const getStoredWorkspaceLabelsForRoom = (roomId, fallbackWorkspace = "") => {
+    const id = String(roomId);
+    const labels = [];
+    const addLabel = (label) => {
+      if (label && !["dm", "my", "unclassified"].includes(label) && !labels.includes(label)) {
+        labels.push(label);
+      }
+    };
+
+    addLabel(workspaceState.roomWorkspace?.[id]?.workspace);
+    addLabel(workspaceState.roomSnapshots?.[id]?.workspace);
+    addLabel(fallbackWorkspace);
+
+    Object.entries(workspaceState.workspaceRooms || {}).forEach(([workspaceLabel, entry]) => {
+      if ((entry?.roomIds || []).map(String).includes(id)) {
+        addLabel(workspaceLabel);
+      }
+    });
+
+    return labels;
+  };
+
+  const forgetRoomWorkspace = (room, fallbackWorkspace = "") => {
+    const roomId = String(room?.id || "");
+    if (!roomId) {
+      return false;
+    }
+
+    const previousWorkspaces = getStoredWorkspaceLabelsForRoom(roomId, fallbackWorkspace);
+    if (!previousWorkspaces.length) {
+      return false;
+    }
+
+    workspaceState.roomWorkspace = workspaceState.roomWorkspace || {};
+    workspaceState.roomSnapshots = workspaceState.roomSnapshots || {};
+    workspaceState.workspaceRooms = workspaceState.workspaceRooms || {};
+
+    previousWorkspaces.forEach((workspaceLabel) => removeRoomFromWorkspaceState(roomId, workspaceLabel));
+    if (workspaceState.roomWorkspace[roomId]) {
+      delete workspaceState.roomWorkspace[roomId];
+    }
+    if (workspaceState.roomSnapshots[roomId]) {
+      workspaceState.roomSnapshots[roomId] = {
+        ...workspaceState.roomSnapshots[roomId],
+        workspace: "unclassified",
+        observedAt: Date.now(),
+      };
+    }
+    workspaceState.updatedAt = Date.now();
+    return true;
   };
 
   const rememberRoomWorkspace = (room, workspaceLabel) => {
+    if (workspaceLabel === "unclassified") {
+      return forgetRoomWorkspace(room);
+    }
+
     if (
       !workspaceLabel ||
       workspaceLabel === "dm" ||
@@ -1081,8 +1187,90 @@
     return Array.from(new Set([...categoryNames, ...learnedNames, ...mappedNames, ...manualNames]));
   };
 
-  const buildSpaces = () => {
-    const categoryNames = getOrderedWorkspaceNames(getKnownWorkspaceNames(extractCategoryNames()));
+  const reconcileWorkspaceStateWithNativeCategories = (categoryNames = []) => {
+    const nativeNames = Array.from(new Set(categoryNames.filter(Boolean)));
+    if (nativeNames.length === 0) {
+      nativeWorkspaceSignature = "";
+      nativeWorkspaceStableCount = 0;
+      return false;
+    }
+
+    const signature = [...nativeNames].sort().join("\n");
+    if (signature === nativeWorkspaceSignature) {
+      nativeWorkspaceStableCount += 1;
+    } else {
+      nativeWorkspaceSignature = signature;
+      nativeWorkspaceStableCount = 1;
+    }
+
+    if (nativeWorkspaceStableCount < 2) {
+      return false;
+    }
+
+    const nativeSet = new Set(nativeNames);
+    let changed = false;
+
+    for (const workspaceName of Object.keys(workspaceState.workspaceRooms || {})) {
+      if (nativeSet.has(workspaceName)) {
+        continue;
+      }
+      const roomIds = workspaceState.workspaceRooms[workspaceName]?.roomIds || [];
+      roomIds.forEach((roomId) => {
+        const id = String(roomId);
+        if (workspaceState.roomWorkspace?.[id]?.workspace === workspaceName) {
+          delete workspaceState.roomWorkspace[id];
+        }
+        if (workspaceState.roomSnapshots?.[id]) {
+          workspaceState.roomSnapshots[id] = {
+            ...workspaceState.roomSnapshots[id],
+            workspace: "unclassified",
+            observedAt: Date.now(),
+          };
+        }
+      });
+      delete workspaceState.workspaceRooms[workspaceName];
+      changed = true;
+    }
+
+    for (const [roomId, entry] of Object.entries(workspaceState.roomWorkspace || {})) {
+      const workspaceName = entry?.workspace || "";
+      if (!workspaceName || nativeSet.has(workspaceName) || ["dm", "my", "unclassified"].includes(workspaceName)) {
+        continue;
+      }
+      delete workspaceState.roomWorkspace[roomId];
+      if (workspaceState.roomSnapshots?.[roomId]) {
+        workspaceState.roomSnapshots[roomId] = {
+          ...workspaceState.roomSnapshots[roomId],
+          workspace: "unclassified",
+          observedAt: Date.now(),
+        };
+      }
+      changed = true;
+    }
+
+    const staleManualRoomIds = Object.entries(settings.manualWorkspaces || {})
+      .filter(([, workspaceName]) => workspaceName && !["dm", "my", "unclassified"].includes(workspaceName) && !nativeSet.has(workspaceName))
+      .map(([roomId]) => roomId);
+    if (staleManualRoomIds.length) {
+      const manualWorkspaces = { ...(settings.manualWorkspaces || {}) };
+      staleManualRoomIds.forEach((roomId) => {
+        delete manualWorkspaces[roomId];
+      });
+      settings = { ...settings, manualWorkspaces };
+      storage.set({ manualWorkspaces });
+      changed = true;
+    }
+
+    if (changed) {
+      workspaceState.updatedAt = Date.now();
+      scheduleWorkspaceStatePersist();
+    }
+
+    return changed;
+  };
+
+  const buildSpaces = (nativeCategoryNames = extractCategoryNames()) => {
+    const categoryNames = getOrderedWorkspaceNames(getKnownWorkspaceNames(nativeCategoryNames));
     const categorySpaces = categoryNames.map((name) => ({ key: `workspace:${name}`, label: name, short: makeWorkspaceShortName(name), kind: "workspace" }));
     const baseSpaces = [
       { key: "all", label: "全体", short: "全", kind: "smart", icon: SMART_SPACE_ICONS.all },
@@ -1911,7 +2099,9 @@
 
     applyStateClasses();
     rooms = extractRooms();
-    spaces = buildSpaces();
+    const nativeCategoryNames = extractCategoryNames();
+    reconcileWorkspaceStateWithNativeCategories(nativeCategoryNames);
+    spaces = buildSpaces(nativeCategoryNames);
 
     if (!spaces.some((space) => space.key === settings.selectedSpace)) {
       settings.selectedSpace = "all";

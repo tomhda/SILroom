@@ -287,6 +287,34 @@ for (const token of [
   }
 }
 
+for (const token of [
+  "const rawDomRooms = Array.from",
+  "const domRooms = dedupeDomRoomsById(rawDomRooms);",
+  "const choosePreferredDuplicateRoom =",
+  "left.domWorkspace === \"unclassified\"",
+  "Boolean(left.avatarSrc) !== Boolean(right.avatarSrc)",
+]) {
+  if (!contentSource.includes(token)) {
+    throw new Error(`Missing duplicate room guard token: ${token}`);
+  }
+}
+
+for (const token of [
+  "let nativeWorkspaceSignature = \"\";",
+  "let nativeWorkspaceStableCount = 0;",
+  "const getStoredWorkspaceLabelsForRoom =",
+  "const reconcileWorkspaceStateWithNativeCategories =",
+  "if (nativeWorkspaceStableCount < 2)",
+  "delete workspaceState.workspaceRooms[workspaceName]",
+  "const staleManualRoomIds =",
+  "if (workspaceLabel === \"unclassified\")",
+  "return forgetRoomWorkspace(room);",
+]) {
+  if (!contentSource.includes(token)) {
+    throw new Error(`Missing deleted workspace cleanup token: ${token}`);
+  }
+}
+
 if (!/characterData:\s*true/.test(contentSource)) {
   throw new Error("Room list observer must watch badge text changes.");
 }
