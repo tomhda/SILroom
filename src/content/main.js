@@ -5,7 +5,7 @@
     name: "SILroom",
     rootId: "silroom-root",
     shellId: "silroom-shell",
-    version: "0.1.6",
+    version: "0.1.7",
     storageKey: "silroomSettings",
     iconsKey: "silroomWorkspaceIcons",
     workspaceStateKey: "silroomWorkspaceState",
