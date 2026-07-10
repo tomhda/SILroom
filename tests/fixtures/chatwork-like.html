@@ -284,5 +284,15 @@
         </div>
       </div>
     </div>
+    <script>
+      document.addEventListener("click", (event) => {
+        const row = event.target.closest?.('#_roomListArea li[role="tab"][id]');
+        if (!row) return;
+        document.querySelectorAll('#_roomListArea li[role="tab"][id]').forEach((candidate) => {
+          candidate.setAttribute("aria-selected", candidate === row ? "true" : "false");
+        });
+        location.hash = `#!rid${row.id}`;
+      });
+    </script>
   </body>
 </html>

@@ -68,6 +68,9 @@
   const WORKSPACE_NATIVE_STABLE_MS = 1800;
   const WORKSPACE_PENDING_READBACK_MS = 3200;
   const API_REFRESH_INTERACTIVE_INTERVAL = 6000;
+  const ROOM_READ_CONFIRM_DELAY = 140;
+  const ROOM_READ_API_REFRESH_DELAY = 900;
+  const ROOM_READ_RECEIPT_TTL = 24 * 60 * 60 * 1000;
 
   const GROUPISH_WORDS = [
     "株式会社",
@@ -116,6 +119,7 @@
   let apiRefreshTimer = 0;
   let workspaceStatePersistTimer = 0;
   let workspaceSettleTimer = 0;
+  let roomReadTimer = 0;
   let observerReconnectTimer = 0;
   let floatingLayerTimer = 0;
   let apiRefreshInFlight = false;
@@ -128,6 +132,7 @@
   let nativeWorkspaceSignature = "";
   let nativeWorkspaceStableCount = 0;
   let nativeWorkspaceStableSince = 0;
+  let roomReadReceipts = new Map();
   let initialized = false;
 
   const API_REFRESH_MIN_INTERVAL = 30000;
@@ -682,6 +687,166 @@
     return match ? match[1] : "";
   };
 
+  const pruneRoomReadReceipts = (now = Date.now()) => {
+    roomReadReceipts.forEach((receipt, roomId) => {
+      if (now - toNumber(receipt.openedAt) > ROOM_READ_RECEIPT_TTL) {
+        roomReadReceipts.delete(roomId);
+      }
+    });
+  };
+
+  const getRoomReadReceipt = (roomId) => {
+    pruneRoomReadReceipts();
+    return roomReadReceipts.get(String(roomId)) || null;
+  };
+
+  const applyRoomReadReceipt = (room) => {
+    const roomId = String(room.id);
+    const receipt = getRoomReadReceipt(roomId);
+    if (!receipt) {
+      return room;
+    }
+
+    const mentionCount = toNumber(room.mentionCount);
+    const unreadCount = toNumber(room.unreadCount);
+    const lastUpdateTime = toNumber(room.lastUpdateTime);
+    if (!receipt.lastUpdateTime && lastUpdateTime) {
+      receipt.lastUpdateTime = lastUpdateTime;
+    }
+
+    const hasUnreadSignal = mentionCount > 0 || unreadCount > 0;
+    const hasNewerMessage =
+      hasUnreadSignal && receipt.lastUpdateTime > 0 && lastUpdateTime > receipt.lastUpdateTime;
+    const hasIncreasedCount =
+      mentionCount > toNumber(receipt.mentionCount) || unreadCount > toNumber(receipt.unreadCount);
+
+    if (hasUnreadSignal && (receipt.roomSettled || hasNewerMessage || hasIncreasedCount)) {
+      roomReadReceipts.delete(roomId);
+      return room;
+    }
+
+    if (!hasUnreadSignal && room.readStateAuthoritative) {
+      receipt.roomSettled = true;
+    }
+
+    return {
+      ...room,
+      mentionCount: 0,
+      unreadCount: 0,
+    };
+  };
+
+  const clearRoomCounts = (room) => {
+    if (!room) {
+      return room;
+    }
+
+    const cleared = { ...room, mentionCount: 0, unreadCount: 0 };
+    cleared.priority = getPriority(cleared);
+    return cleared;
+  };
+
+  const clearRoomCountsInCache = (roomId) => {
+    const id = String(roomId);
+    const clearList = (roomList) =>
+      Array.isArray(roomList)
+        ? roomList.map((room) => (String(room.id) === id ? clearRoomCounts(room) : room))
+        : roomList;
+
+    spaceRoomCache = new Map(
+      Array.from(spaceRoomCache.entries()).map(([spaceKey, entry]) => [
+        spaceKey,
+        {
+          ...entry,
+          rooms: clearList(entry.rooms),
+          candidateRooms: clearList(entry.candidateRooms),
+        },
+      ])
+    );
+  };
+
+  const getRoomReadTarget = (roomId) => {
+    const id = String(roomId);
+    const liveRoom = rooms.find((room) => String(room.id) === id);
+    if (liveRoom) {
+      return liveRoom;
+    }
+
+    for (const entry of spaceRoomCache.values()) {
+      const cachedRoom = [...(entry.rooms || []), ...(entry.candidateRooms || [])].find(
+        (room) => String(room.id) === id
+      );
+      if (cachedRoom) {
+        return cachedRoom;
+      }
+    }
+
+    return null;
+  };
+
+  const markRoomReadLocally = (roomId) => {
+    const id = String(roomId || "");
+    const target = getRoomReadTarget(id);
+    if (!target || (toNumber(target.mentionCount) === 0 && toNumber(target.unreadCount) === 0)) {
+      return false;
+    }
+
+    const workspaceKey = target.workspace && !["dm", "my", "unclassified"].includes(target.workspace)
+      ? `workspace:${target.workspace}`
+      : "";
+    const rawNativeStats = workspaceKey ? getNativeWorkspaceStats(workspaceKey) : null;
+    const nativeStats = workspaceKey ? adjustNativeStatsForReadReceipts(workspaceKey, rawNativeStats) : null;
+    const receipt = {
+      roomId: id,
+      workspace: target.workspace || "",
+      mentionCount: toNumber(target.mentionCount),
+      unreadCount: toNumber(target.unreadCount),
+      lastUpdateTime: toNumber(target.lastUpdateTime),
+      openedAt: Date.now(),
+      roomSettled: false,
+      categoryMentionBaseline: toNumber(nativeStats?.mention),
+      categoryUnreadBaseline: toNumber(nativeStats?.unread),
+      categoryMentionSettled: !nativeStats || toNumber(nativeStats.mention) === 0 || toNumber(target.mentionCount) === 0,
+      categoryUnreadSettled: !nativeStats || toNumber(nativeStats.unread) === 0 || toNumber(target.unreadCount) === 0,
+    };
+
+    roomReadReceipts.set(id, receipt);
+    rooms = rooms.map((room) => (String(room.id) === id ? clearRoomCounts(room) : room));
+    clearRoomCountsInCache(id);
+
+    if (workspaceState.roomSnapshots?.[id]) {
+      workspaceState.roomSnapshots[id] = {
+        ...workspaceState.roomSnapshots[id],
+        mentionCount: 0,
+        unreadCount: 0,
+        observedAt: Date.now(),
+      };
+      workspaceState.updatedAt = Date.now();
+      scheduleWorkspaceStatePersist();
+    }
+
+    render();
+    if (settings.apiAssistEnabled) {
+      scheduleApiRefresh(ROOM_READ_API_REFRESH_DELAY, true);
+    }
+    return true;
+  };
+
+  const scheduleRoomReadConfirmation = (roomId, delay = ROOM_READ_CONFIRM_DELAY) => {
+    const id = String(roomId || "");
+    if (!id) {
+      return;
+    }
+
+    clearTimeout(roomReadTimer);
+    roomReadTimer = window.setTimeout(() => {
+      const nativeRow = document.getElementById(id);
+      if (getCurrentRid() === id || nativeRow?.getAttribute("aria-selected") === "true") {
+        markRoomReadLocally(id);
+      }
+    }, delay);
+  };
+
   const looksLikePersonName = (name) => {
     const cleaned = normalizeText(name).replace(/[()（）0-9０-９+\-ー/]/g, "");
 
@@ -934,12 +1099,14 @@
           domWorkspace: domWorkspaceMap.get(row.id) || "",
           apiType: apiRoom?.type || "",
           lastUpdateTime: toNumber(apiRoom?.last_update_time),
+          readStateAuthoritative: true,
         };
 
         room.type = inferRoomType(room);
         room.workspace = inferWorkspace(room);
-        room.priority = getPriority(room);
-        return room;
+        const displayedRoom = applyRoomReadReceipt(room);
+        displayedRoom.priority = getPriority(displayedRoom);
+        return displayedRoom;
       })
       .filter((room) => room.id && room.name);
     const domRooms = dedupeDomRoomsById(rawDomRooms);
@@ -970,12 +1137,14 @@
           domWorkspace: "",
           apiType: apiRoom.type || "",
           lastUpdateTime: toNumber(apiRoom.last_update_time),
+          readStateAuthoritative: true,
         };
 
         room.type = inferRoomType(room);
         room.workspace = inferWorkspace(room);
-        room.priority = getPriority(room);
-        return room;
+        const displayedRoom = applyRoomReadReceipt(room);
+        displayedRoom.priority = getPriority(displayedRoom);
+        return displayedRoom;
       })
       .filter((room) => room.id && room.name);
 
@@ -1167,8 +1336,19 @@
       changed = true;
     }
 
+    const previousSnapshot = workspaceState.roomSnapshots[roomId];
+    const nextSnapshot = snapshotRoom({ ...room, workspace: workspaceLabel });
+    const snapshotChanged =
+      !previousSnapshot ||
+      ["name", "avatarSrc", "mentionCount", "unreadCount", "pinned", "type", "workspace", "apiType", "lastUpdateTime"].some(
+        (key) => previousSnapshot[key] !== nextSnapshot[key]
+      );
+    if (snapshotChanged) {
+      changed = true;
+    }
+
     workspaceState.roomWorkspace[roomId] = { workspace: workspaceLabel, observedAt: now };
-    workspaceState.roomSnapshots[roomId] = snapshotRoom({ ...room, workspace: workspaceLabel });
+    workspaceState.roomSnapshots[roomId] = nextSnapshot;
 
     const workspaceEntry = workspaceState.workspaceRooms[workspaceLabel] || { roomIds: [], updatedAt: 0 };
     if (now - toNumber(workspaceEntry.updatedAt) > WORKSPACE_SYNC_STALE_MS / 2) {
@@ -1352,6 +1532,7 @@
     const id = String(roomId);
     const snapshot = workspaceState.roomSnapshots?.[id];
     const apiRoom = apiRoomsById.get(id);
+    const nativeRow = document.getElementById(id);
 
     if (!snapshot && !apiRoom) {
       return null;
@@ -1370,19 +1551,21 @@
       pinned: apiRoom ? Boolean(apiRoom.sticky) : Boolean(snapshot?.pinned),
       active: id === getCurrentRid(),
       sourceIndex: toNumber(snapshot?.sourceIndex),
-      nativeRow: document.getElementById(id),
+      nativeRow,
       domWorkspace: "",
       apiType: apiRoom?.type || snapshot?.apiType || "",
       lastUpdateTime: toNumber(apiRoom?.last_update_time || snapshot?.lastUpdateTime),
       type: snapshot?.type || "",
       workspace: workspaceLabel,
+      readStateAuthoritative: Boolean(nativeRow || apiRoom),
     };
 
     if (!room.type) {
       room.type = inferRoomType(room);
     }
-    room.priority = getPriority(room);
-    return room.name ? room : null;
+    const displayedRoom = applyRoomReadReceipt(room);
+    displayedRoom.priority = getPriority(displayedRoom);
+    return displayedRoom.name ? displayedRoom : null;
   };
 
   const getStoredWorkspaceRoomIds = (workspaceLabel) => {
@@ -1575,13 +1758,59 @@
     return categoryButton ? extractBadges(categoryButton) : null;
   };
 
+  const adjustNativeStatsForReadReceipts = (spaceKey, nativeStats) => {
+    if (!nativeStats || !isWorkspaceSpace(spaceKey)) {
+      return nativeStats;
+    }
+
+    pruneRoomReadReceipts();
+    const workspaceLabel = spaceKey.replace("workspace:", "");
+    let mentionOffset = 0;
+    let unreadOffset = 0;
+
+    roomReadReceipts.forEach((receipt, roomId) => {
+      if (receipt.workspace !== workspaceLabel) {
+        return;
+      }
+
+      if (!receipt.categoryMentionSettled) {
+        const expectedMentionAfterRead = Math.max(
+          0,
+          toNumber(receipt.categoryMentionBaseline) - toNumber(receipt.mentionCount)
+        );
+        if (toNumber(nativeStats.mention) <= expectedMentionAfterRead) {
+          receipt.categoryMentionSettled = true;
+        } else {
+          mentionOffset += toNumber(receipt.mentionCount);
+        }
+      }
+
+      if (!receipt.categoryUnreadSettled) {
+        const expectedUnreadAfterRead = Math.max(
+          0,
+          toNumber(receipt.categoryUnreadBaseline) - toNumber(receipt.unreadCount)
+        );
+        if (toNumber(nativeStats.unread) <= expectedUnreadAfterRead) {
+          receipt.categoryUnreadSettled = true;
+        } else {
+          unreadOffset += toNumber(receipt.unreadCount);
+        }
+      }
+    });
+
+    return {
+      mention: Math.max(0, toNumber(nativeStats.mention) - mentionOffset),
+      unread: Math.max(0, toNumber(nativeStats.unread) - unreadOffset),
+    };
+  };
+
   const getSpaceStats = (spaceKey) => {
     const liveRooms = getRoomsForSpace(spaceKey);
     const cachedEntry = spaceRoomCache.get(spaceKey);
     const cachedRooms = cachedEntry?.rooms || cachedEntry?.candidateRooms || [];
     const targetRooms = isWorkspaceSpace(spaceKey) ? mergeRoomsById(liveRooms, cachedRooms) : liveRooms;
     const roomStats = sumRoomStats(targetRooms);
-    const nativeStats = getNativeWorkspaceStats(spaceKey);
+    const nativeStats = adjustNativeStatsForReadReceipts(spaceKey, getNativeWorkspaceStats(spaceKey));
 
     if (!nativeStats) {
       return roomStats;
@@ -2185,10 +2414,12 @@
 
     if (nativeRow) {
       nativeRow.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
+      scheduleRoomReadConfirmation(roomId);
       return;
     }
 
     location.hash = `#!rid${roomId}`;
+    scheduleRoomReadConfirmation(roomId);
   };
 
   const findNativeCategoryButton = (workspaceLabel) => {
@@ -2969,6 +3200,7 @@
       debounceRender(20);
       scheduleInteractiveApiRefresh(250);
       scheduleFloatingLayerCheck(20);
+      scheduleRoomReadConfirmation(getCurrentRid());
     });
     window.addEventListener("resize", () => scheduleFloatingLayerCheck(120));
     window.addEventListener("focus", () => scheduleInteractiveApiRefresh(250));
@@ -3023,6 +3255,7 @@
     setupObserver();
     setupStructureObserver();
     render();
+    scheduleRoomReadConfirmation(getCurrentRid(), 300);
     setupFloatingLayerObserver();
     syncNativeWorkspaceIfNeeded(settings.selectedSpace);
     scheduleApiRefresh(50, true);

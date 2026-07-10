@@ -131,7 +131,7 @@ for (const token of [
   "const mentionCount = Math.max(badges.mention, apiMentionCount);",
   "const unreadCount = Math.max(apiMentionCount > 0 && badges.mention === 0 ? 0 : badges.unread, apiUnreadCount);",
   "const targetRooms = isWorkspaceSpace(spaceKey) ? mergeRoomsById(liveRooms, cachedRooms) : liveRooms;",
-  "const nativeStats = getNativeWorkspaceStats(spaceKey);",
+  "const nativeStats = adjustNativeStatsForReadReceipts(spaceKey, getNativeWorkspaceStats(spaceKey));",
   "mention: Math.max(roomStats.mention, nativeStats.mention)",
   "title: `自分宛 ${room.mentionCount}`",
   "const rowHasMentionSignal = (row)",
@@ -312,6 +312,16 @@ for (const token of [
   "const isNativeWorkspaceSignatureStable =",
   "const shouldDeferUnclassifiedWorkspaceObservation =",
   "const scheduleNativeWorkspaceStableRender =",
+  "const ROOM_READ_CONFIRM_DELAY = 140;",
+  "let roomReadReceipts = new Map();",
+  "const applyRoomReadReceipt =",
+  "const markRoomReadLocally =",
+  "const scheduleRoomReadConfirmation =",
+  "const adjustNativeStatsForReadReceipts =",
+  "const snapshotChanged =",
+  '\"mentionCount\", \"unreadCount\"',
+  "scheduleApiRefresh(ROOM_READ_API_REFRESH_DELAY, true);",
+  "scheduleRoomReadConfirmation(getCurrentRid());",
   "const getStoredWorkspaceLabelsForRoom =",
   "const reconcileWorkspaceStateWithNativeCategories =",
   "if (!isNativeWorkspaceSignatureStable(now))",
@@ -324,6 +334,15 @@ for (const token of [
 ]) {
   if (!contentSource.includes(token)) {
     throw new Error(`Missing deleted workspace cleanup token: ${token}`);
+  }
+}
+
+for (const token of [
+  'event.target.closest?.(\'#_roomListArea li[role="tab"][id]\')',
+  'location.hash = `#!rid${row.id}`;',
+]) {
+  if (!fixtureSource.includes(token)) {
+    throw new Error(`Fixture must emulate native room activation: ${token}`);
   }
 }
 
