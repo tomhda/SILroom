@@ -233,6 +233,8 @@ for (const token of [
   "manualWorkspaces: {}",
   "const getTextWithoutNumericBadges = (node) =>",
   "const getNativeCategoryName = (node) =>",
+  '[（(]\\d+\\+?[）)]',
+  'settings.selectedSpace.slice("workspace:".length)',
   "dataAction: \"open-room-menu\"",
   "dataAction: \"assign-room-category\"",
   "renderRoomMenuOption(room, \"auto\", \"自動判定\")",
@@ -255,6 +257,7 @@ for (const token of [
 for (const token of [
   'aria-label="サンプルA 自分宛 2"',
   'aria-label="サンプルB 未読 3"',
+  '<span class="fixture-category-count">(1)</span>',
   '<span class="fixture-badge fixture-badge--unread" aria-label="未読 1"><span><span>1</span></span></span>',
   ".fixture-messageStack",
   "チャット欄の最下部テスト",

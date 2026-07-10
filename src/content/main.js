@@ -576,7 +576,7 @@
   const getTextWithoutNumericBadges = (node) => {
     const clone = node.cloneNode(true);
     Array.from(clone.querySelectorAll("*")).forEach((element) => {
-      if (/^\d+$/.test(normalizeText(element.textContent))) {
+      if (/^(?:\d+\+?|[（(]\d+\+?[）)])$/.test(normalizeText(element.textContent))) {
         element.remove();
       }
     });
@@ -1213,8 +1213,13 @@
     const manualNames = Object.values(settings.manualWorkspaces || {}).filter(
       (name) => name && !["dm", "my", "unclassified"].includes(name)
     );
+    const selectedWorkspaceName = settings.selectedSpace?.startsWith("workspace:")
+      ? settings.selectedSpace.slice("workspace:".length)
+      : "";
 
-    return Array.from(new Set([...categoryNames, ...learnedNames, ...mappedNames, ...manualNames]));
+    return Array.from(
+      new Set([...categoryNames, ...learnedNames, ...mappedNames, ...manualNames, selectedWorkspaceName].filter(Boolean))
+    );
   };
 
   const reconcileWorkspaceStateWithNativeCategories = (categoryNames = []) => {
@@ -1293,6 +1298,14 @@
       settings = { ...settings, manualWorkspaces };
       storage.set({ manualWorkspaces });
       changed = true;
+    }
+
+    const selectedWorkspaceName = settings.selectedSpace?.startsWith("workspace:")
+      ? settings.selectedSpace.slice("workspace:".length)
+      : "";
+    if (selectedWorkspaceName && !nativeSet.has(selectedWorkspaceName)) {
+      settings = { ...settings, selectedSpace: "all", quickFilter: "all" };
+      storage.set({ selectedSpace: "all", quickFilter: "all" });
     }
 
     if (changed) {
@@ -2137,8 +2150,9 @@
     rooms = extractRooms();
     spaces = buildSpaces(nativeCategoryNames);
 
-    if (!spaces.some((space) => space.key === settings.selectedSpace)) {
+    if (!spaces.some((space) => space.key === settings.selectedSpace) && !settings.selectedSpace?.startsWith("workspace:")) {
       settings.selectedSpace = "all";
+      settings.quickFilter = "all";
     }
 
     updateSpaceRoomCache();
