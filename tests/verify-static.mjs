@@ -27,6 +27,7 @@ const requiredFiles = [
   "popup.html",
   "popup.js",
   "styles/popup.css",
+  "scripts/build-webstore.ps1",
   "assets/icons/all.svg",
   "assets/icons/dm.svg",
   "assets/icons/mention.svg",
@@ -49,8 +50,12 @@ if (missing.length > 0) {
   throw new Error(`Missing files: ${missing.join(", ")}`);
 }
 
-if (manifest.name !== "SILroom") {
+if (manifest.name !== "SILroom-Dev") {
   throw new Error(`Unexpected extension name: ${manifest.name}`);
+}
+
+if (manifest.action?.default_title !== "SILroom-Dev") {
+  throw new Error("The unpacked extension must be labeled SILroom-Dev.");
 }
 
 if (manifest.manifest_version !== 3) {
@@ -112,6 +117,29 @@ const contentSource = read("src/content/main.js");
 const styleSource = read("styles/silroom.css");
 if (!/if \(spaceKey === "attention"\) {\s*return room\.mentionCount > 0;\s*}/.test(contentSource)) {
   throw new Error("Attention space must match mention rooms only.");
+}
+
+const popupSource = read("popup.html");
+const popupScriptSource = read("popup.js");
+const buildScriptSource = read("scripts/build-webstore.ps1");
+for (const token of [
+  'id="extensionName"',
+  'chrome.runtime.getManifest().name || "SILroom"',
+  'document.getElementById("extensionName").textContent = extensionName;',
+]) {
+  if (!popupSource.includes(token) && !popupScriptSource.includes(token)) {
+    throw new Error(`Missing development-name UI token: ${token}`);
+  }
+}
+
+for (const token of [
+  '$releaseManifest.name = "SILroom"',
+  '$releaseManifest.action.default_title = "SILroom"',
+  'SILroom-$releaseVersion-webstore-upload.zip',
+]) {
+  if (!buildScriptSource.includes(token)) {
+    throw new Error(`Missing Web Store packaging token: ${token}`);
+  }
 }
 
 if (!contentSource.includes("const usesQuickFilter = (spaceKey) => !isAttentionSpace(spaceKey);")) {

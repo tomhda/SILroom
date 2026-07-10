@@ -83,7 +83,9 @@ API補助は任意です。popupでChatwork APIトークンを保存して有効
 3. 「パッケージ化されていない拡張機能を読み込む」
 4. `C:\Users\thash\code\chrome拡張\SILroom` を選択
 
-ファイル更新後は、Chrome拡張一覧のSILroomカードでリロードしてからChatworkタブを再読み込みします。
+ローカルで読み込んだ開発版は `SILroom-Dev` と表示されます。Web Store提出ZIPでは `SILroom` に自動変換されます。
+
+ファイル更新後は、Chrome拡張一覧の `SILroom-Dev` カードでリロードしてからChatworkタブを再読み込みします。
 
 ## QA
 
@@ -91,6 +93,12 @@ API補助は任意です。popupでChatwork APIトークンを保存して有効
 node --check C:\Users\thash\code\chrome拡張\SILroom\src\content\main.js
 node --check C:\Users\thash\code\chrome拡張\SILroom\popup.js
 C:\Users\thash\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe C:\Users\thash\code\chrome拡張\SILroom\tests\verify-static.mjs
+```
+
+Web Store提出ZIPは次のコマンドで生成します。
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\Users\thash\code\chrome拡張\SILroom\scripts\build-webstore.ps1
 ```
 
 ## Structure

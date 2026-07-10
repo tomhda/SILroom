@@ -74,6 +74,10 @@
     });
 
   const bind = async () => {
+    const extensionName = chrome.runtime.getManifest().name || "SILroom";
+    document.title = extensionName;
+    document.getElementById("extensionName").textContent = extensionName;
+
     let settings = await getSettings();
     let secrets = await getSecrets();
     const enabled = document.getElementById("enabled");
