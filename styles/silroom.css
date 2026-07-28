@@ -15,7 +15,8 @@
   --silroom-muted: #9fb3d1;
   --silroom-dim: #6f86aa;
   --silroom-mention: #19e58f;
-  --silroom-unread: #7d8ca6;
+  --silroom-mention-foreground: #04111d;
+  --silroom-unread: #7aa2ff;
   --silroom-mention-soft: rgba(25, 229, 143, 0.18);
   --silroom-unread-soft: rgba(125, 140, 166, 0.1);
   --silroom-mention-text: #b8ffe4;
@@ -87,20 +88,34 @@
   z-index: calc(var(--silroom-z-index) + 10);
 }
 
-:root.silroom-chatwork-modal-open #silroom-shell,
-:root.silroom-chatwork-modal-open #silroom-overview-tab {
-  opacity: 0;
-  pointer-events: none;
-  visibility: hidden;
+:root.silroom-chatwork-modal-open #silroom-root {
   z-index: 0;
+}
+
+/* Chatwork header layers (search suggestions) are trapped inside #_wrapper,
+   so the panel has to drop below that wrapper while one of them is open. */
+:root.silroom-chatwork-header-overlay-open #silroom-root {
+  z-index: 0;
+}
+
+/* The native room list would then paint over the lowered panel, so keep its
+   container transparent and click-through while the header layer is open. */
+:root.silroom-enabled.silroom-chatwork-header-overlay-open #_sideContent {
+  background: transparent !important;
+  pointer-events: none !important;
 }
 
 #silroom-root {
   color: var(--silroom-text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Meiryo, sans-serif;
   font-size: 13px;
+  height: 0;
+  left: 0;
   line-height: 1.35;
-  position: relative;
+  overflow: visible;
+  position: fixed;
+  top: 0;
+  width: 0;
   z-index: var(--silroom-z-index);
 }
 
@@ -132,6 +147,8 @@
   display: flex;
   flex: 0 0 var(--silroom-rail-width);
   flex-direction: column;
+  max-height: 100%;
+  min-height: 0;
   min-width: var(--silroom-rail-width);
   overflow: visible;
   padding: 10px 7px 8px;
@@ -182,6 +199,7 @@
 
 .silroom-railGroupWorkspaces {
   min-height: 0;
+  overscroll-behavior: contain;
   overflow-x: hidden;
   overflow-y: auto;
   padding-right: 1px;
@@ -368,6 +386,7 @@
 
 .silroom-railBadge.is-mention {
   background: var(--silroom-mention);
+  color: var(--silroom-mention-foreground);
 }
 
 .silroom-railBadge.is-unread {
@@ -382,6 +401,12 @@
   right: 7px;
   top: 4px;
   width: 10px;
+}
+
+.silroom-railBadge.is-unread.is-dot,
+.silroom-roomRailBadge.is-unread.is-dot,
+.silroom-badge.is-unread.is-dot {
+  transform: translateX(3px);
 }
 
 .silroom-railItem.is-draggable .silroom-railBadge {
@@ -407,6 +432,8 @@
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
+  max-height: 100%;
+  min-height: 0;
   min-width: 0;
   overflow: visible;
   position: relative;
@@ -479,6 +506,7 @@
   flex-direction: column;
   gap: 7px;
   min-height: 0;
+  overscroll-behavior: contain;
   overflow-x: hidden;
   overflow-y: auto;
   padding-top: 10px;
@@ -550,6 +578,7 @@
 
 .silroom-roomRailBadge.is-mention {
   background: var(--silroom-mention);
+  color: var(--silroom-mention-foreground);
 }
 
 .silroom-roomRailBadge.is-unread {
@@ -761,6 +790,7 @@
 .silroom-roomList {
   flex: 1 1 auto;
   min-height: 0;
+  overscroll-behavior: contain;
   overflow: auto;
   padding: 8px 8px 14px;
 }
@@ -957,6 +987,7 @@
 
 .silroom-badge.is-mention {
   background: var(--silroom-mention);
+  color: var(--silroom-mention-foreground);
 }
 
 .silroom-badge.is-unread {

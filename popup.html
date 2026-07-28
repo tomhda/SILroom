@@ -60,6 +60,37 @@
         </select>
       </section>
 
+      <section class="popup__section" aria-labelledby="notificationColorsTitle">
+        <div class="popup__colorHeader">
+          <strong id="notificationColorsTitle">通知バッジ色</strong>
+          <small>数字色は背景色に合わせて自動調整</small>
+        </div>
+        <div class="popup__colorGrid">
+          <div class="popup__colorTile">
+            <div class="popup__colorTileTitle">
+              <strong id="mentionColorTitle">自分宛</strong>
+              <span id="mentionColorPreview" class="popup__badgePreview" aria-hidden="true">3</span>
+            </div>
+            <div class="popup__colorControl">
+              <input id="mentionColor" type="color" value="#19e58f" aria-labelledby="mentionColorTitle">
+              <output id="mentionColorValue" for="mentionColor">#19E58F</output>
+            </div>
+            <button id="resetMentionColor" class="popup__colorReset" type="button">初期色</button>
+          </div>
+          <div class="popup__colorTile">
+            <div class="popup__colorTileTitle">
+              <strong id="unreadColorTitle">通常未読</strong>
+              <span id="unreadColorPreview" class="popup__badgePreview is-dot" aria-hidden="true"></span>
+            </div>
+            <div class="popup__colorControl">
+              <input id="unreadColor" type="color" value="#7aa2ff" aria-labelledby="unreadColorTitle">
+              <output id="unreadColorValue" for="unreadColor">#7AA2FF</output>
+            </div>
+            <button id="resetUnreadColor" class="popup__colorReset" type="button">初期色</button>
+          </div>
+        </div>
+      </section>
+
       <p class="popup__note">送信・編集・タスク作成には触れません。</p>
     </main>
     <script src="popup.js"></script>

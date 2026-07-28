@@ -5,7 +5,7 @@
     name: "SILroom",
     rootId: "silroom-root",
     shellId: "silroom-shell",
-    version: "0.1.7",
+    version: "0.1.11",
     storageKey: "silroomSettings",
     iconsKey: "silroomWorkspaceIcons",
     workspaceStateKey: "silroomWorkspaceState",
@@ -13,6 +13,7 @@
 
   const SELECTORS = {
     sideContent: "#_sideContent",
+    globalHeader: "#_globalHeader",
     roomListArea: "#_roomListArea",
     mainContent: "#_mainContent",
     subContent: "#_subContent",
@@ -20,6 +21,10 @@
     sendArea: "#_chatSendArea",
     currentRoom: ".roomMainContent__currentSelectedRoom",
   };
+  const DEFAULT_MENTION_COLOR = "#19e58f";
+  const DEFAULT_UNREAD_COLOR = "#7aa2ff";
+  const DARK_BADGE_TEXT_COLOR = "#04111d";
+  const LIGHT_BADGE_TEXT_COLOR = "#ffffff";
 
   const DEFAULT_SETTINGS = {
     enabled: true,
@@ -34,6 +39,8 @@
     workspaceIcons: {},
     workspaceOrder: [],
     allBadgeEnabled: false,
+    mentionColor: DEFAULT_MENTION_COLOR,
+    unreadColor: DEFAULT_UNREAD_COLOR,
     apiAssistEnabled: false,
     apiAssistVersion: 0,
   };
@@ -71,6 +78,12 @@
   const ROOM_READ_CONFIRM_DELAY = 140;
   const ROOM_READ_API_REFRESH_DELAY = 900;
   const ROOM_READ_RECEIPT_TTL = 24 * 60 * 60 * 1000;
+  const SILROOM_SCROLL_SURFACE_SELECTOR = [
+    ".silroom-roomList",
+    ".silroom-roomRailList",
+    ".silroom-railGroupWorkspaces",
+    ".silroom-roomMenu",
+  ].join(", ");
 
   const GROUPISH_WORDS = [
     "株式会社",
@@ -138,7 +151,10 @@
   const API_REFRESH_MIN_INTERVAL = 30000;
   const LOGO_SIZE = 128;
   const MODAL_LAYER_CLASS = "silroom-chatwork-modal-open";
+  const HEADER_LAYER_CLASS = "silroom-chatwork-header-overlay-open";
   const MODAL_LAYER_NAME_RE = /(modal|dialog|preview|viewer|lightbox|overlay)/i;
+  const PROFILE_LAYER_NAME_RE = /(?:profile(?:[-_\s]*(?:card|detail|dialog|modal|popup|popover|panel))?|contact[-_\s]*(?:card|detail|profile|dialog|modal|popup|popover|panel)|(?:user|member)[-_\s]*(?:card|profile|detail)|プロフィール(?:詳細)?|コンタクト(?:詳細)?)/i;
+  const PROFILE_LAYER_TEST_ID_SELECTOR = '[data-testid^="profile-popup_"]';
 
   const isLocalFixturePage = () =>
     ["127.0.0.1", "localhost"].includes(location.hostname) &&
@@ -441,6 +457,28 @@
     }, delay);
   };
 
+  const normalizeHexColor = (value, fallback) =>
+    /^#[0-9a-f]{6}$/i.test(String(value || "")) ? String(value).toLowerCase() : fallback;
+
+  const getRelativeLuminance = (hexColor) => {
+    const channels = hexColor
+      .slice(1)
+      .match(/.{2}/g)
+      .map((value) => Number.parseInt(value, 16) / 255)
+      .map((value) => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4));
+    return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+  };
+
+  const getBadgeTextColor = (backgroundColor) => {
+    const backgroundLuminance = getRelativeLuminance(backgroundColor);
+    const darkLuminance = getRelativeLuminance(DARK_BADGE_TEXT_COLOR);
+    const lightContrast = 1.05 / (backgroundLuminance + 0.05);
+    const darkContrast =
+      (Math.max(backgroundLuminance, darkLuminance) + 0.05) /
+      (Math.min(backgroundLuminance, darkLuminance) + 0.05);
+    return lightContrast >= darkContrast ? LIGHT_BADGE_TEXT_COLOR : DARK_BADGE_TEXT_COLOR;
+  };
+
   const applyStateClasses = () => {
     document.documentElement.classList.toggle("silroom-enabled", settings.enabled);
     document.documentElement.classList.toggle(
@@ -452,6 +490,11 @@
     const panelWidth = settings.panelCollapsed ? PANEL_WIDTH.collapsed : getPanelWidthValue();
     document.documentElement.style.setProperty("--silroom-panel-current-width", `${panelWidth}px`);
     document.documentElement.style.setProperty("--silroom-panel-expanded-width", `${getPanelWidthValue()}px`);
+    const mentionColor = normalizeHexColor(settings.mentionColor, DEFAULT_MENTION_COLOR);
+    const unreadColor = normalizeHexColor(settings.unreadColor, DEFAULT_UNREAD_COLOR);
+    document.documentElement.style.setProperty("--silroom-mention", mentionColor);
+    document.documentElement.style.setProperty("--silroom-mention-foreground", getBadgeTextColor(mentionColor));
+    document.documentElement.style.setProperty("--silroom-unread", unreadColor);
     document.documentElement.style.setProperty(
       "--silroom-shell-width",
       `calc(var(--silroom-rail-width) + ${panelWidth}px)`
@@ -506,12 +549,15 @@
     const role = node.getAttribute("role");
     const semanticModal = role === "dialog" || node.getAttribute("aria-modal") === "true";
     const namedModalLayer = MODAL_LAYER_NAME_RE.test(signature);
+    const namedProfileLayer = PROFILE_LAYER_NAME_RE.test(signature);
     const zIndex = Number.parseInt(style.zIndex, 10);
     const positionedAsLayer =
       style.position === "fixed" ||
       node.tagName === "DIALOG" ||
       semanticModal ||
       (style.position === "absolute" && Number.isFinite(zIndex) && zIndex >= 100);
+    const profilePositionedAsLayer =
+      style.position === "fixed" || style.position === "absolute" || node.tagName === "DIALOG" || semanticModal;
     const largeModal =
       rect.width >= Math.min(420, viewportWidth * 0.42) &&
       rect.height >= Math.min(260, viewportHeight * 0.34) &&
@@ -525,12 +571,26 @@
       const mediaRect = media.getBoundingClientRect();
       return mediaRect.width >= 320 && mediaRect.height >= 160;
     });
+    const overlapsSilroomArea = rect.left < shellRight && rect.right > 0;
+    const profileCardSized = rect.width >= 180 && rect.height >= 120;
+    const containsProfilePopupControl =
+      profilePositionedAsLayer &&
+      profileCardSized &&
+      (node.matches(PROFILE_LAYER_TEST_ID_SELECTOR) || Boolean(node.querySelector(PROFILE_LAYER_TEST_ID_SELECTOR)));
+    const profileCardLayer =
+      (namedProfileLayer || containsProfilePopupControl) &&
+      profilePositionedAsLayer &&
+      profileCardSized &&
+      overlapsSilroomArea;
+
+    if (profileCardLayer) {
+      return true;
+    }
 
     if (!positionedAsLayer || !largeModal || (!semanticModal && !namedModalLayer && !hasLargeMediaPreview)) {
       return false;
     }
 
-    const overlapsSilroomArea = rect.left < shellRight && rect.right > 0;
     const crossesIntoChatArea = rect.right > shellRight + 120 && rect.bottom > 140;
     const centeredModal =
       rect.left < viewportWidth * 0.38 &&
@@ -561,8 +621,56 @@
     return false;
   };
 
+  const hasChatworkHeaderOverlay = () => {
+    if (!settings.enabled || !document.body) {
+      return false;
+    }
+
+    const shellRect = document.getElementById(APP.shellId)?.getBoundingClientRect();
+    const header = document.querySelector(SELECTORS.globalHeader);
+    if (!shellRect || !header) {
+      return false;
+    }
+
+    const headerRect = header.getBoundingClientRect();
+
+    for (const node of header.getElementsByTagName("*")) {
+      const style = getComputedStyle(node);
+      if (style.position !== "fixed" && style.position !== "absolute") {
+        continue;
+      }
+
+      if (
+        style.display === "none" ||
+        style.visibility === "hidden" ||
+        Number.parseFloat(style.opacity || "1") === 0
+      ) {
+        continue;
+      }
+
+      const rect = node.getBoundingClientRect();
+      if (rect.width < 80 || rect.height < 24) {
+        continue;
+      }
+
+      // Only header layers that hang below the header bar can cover the panel.
+      if (rect.bottom <= headerRect.bottom + 2) {
+        continue;
+      }
+
+      if (rect.left >= shellRect.right || rect.right <= shellRect.left || rect.top >= shellRect.bottom) {
+        continue;
+      }
+
+      return true;
+    }
+
+    return false;
+  };
+
   const updateFloatingLayerState = () => {
     document.documentElement.classList.toggle(MODAL_LAYER_CLASS, hasChatworkModalLayer());
+    document.documentElement.classList.toggle(HEADER_LAYER_CLASS, hasChatworkHeaderOverlay());
   };
 
   const scheduleFloatingLayerCheck = (delay = 80) => {
@@ -623,7 +731,7 @@
     const visit = (node) => {
       Array.from(node.children || []).forEach((child) => {
         if (child.matches?.('li[role="tab"][id]')) {
-          map.set(child.id, child.dataset.workspace || currentWorkspace || "");
+          map.set(child, child.dataset.workspace || currentWorkspace || "");
           return;
         }
 
@@ -1096,7 +1204,7 @@
           active,
           sourceIndex: index,
           nativeRow: row,
-          domWorkspace: domWorkspaceMap.get(row.id) || "",
+          domWorkspace: domWorkspaceMap.get(row) || "",
           apiType: apiRoom?.type || "",
           lastUpdateTime: toNumber(apiRoom?.last_update_time),
           readStateAuthoritative: true,
@@ -1109,9 +1217,8 @@
         return displayedRoom;
       })
       .filter((room) => room.id && room.name);
+    rememberWorkspaceObservations(rawDomRooms);
     const domRooms = dedupeDomRoomsById(rawDomRooms);
-
-    rememberWorkspaceObservations(domRooms);
 
     const seenIds = new Set(domRooms.map((room) => String(room.id)));
     return [...domRooms, ...extractApiOnlyRooms(currentRid, seenIds, domRooms.length)];
@@ -1163,6 +1270,13 @@
   const mergeDuplicateDomRooms = (left, right) => {
     const preferred = choosePreferredDuplicateRoom(left, right);
     const other = preferred === left ? right : left;
+    const domWorkspaces = Array.from(
+      new Set(
+        [left.domWorkspace, ...(left.domWorkspaces || []), right.domWorkspace, ...(right.domWorkspaces || [])].filter(
+          Boolean
+        )
+      )
+    );
 
     return {
       ...preferred,
@@ -1173,6 +1287,7 @@
       active: Boolean(left.active || right.active),
       sourceIndex: Math.min(toNumber(left.sourceIndex), toNumber(right.sourceIndex)),
       lastUpdateTime: Math.max(toNumber(left.lastUpdateTime), toNumber(right.lastUpdateTime)),
+      domWorkspaces,
     };
   };
 
@@ -1308,25 +1423,18 @@
       !workspaceLabel ||
       workspaceLabel === "dm" ||
       workspaceLabel === "my" ||
-      workspaceLabel === "unclassified" ||
-      isSeparatedPersonalRoom(room)
+      workspaceLabel === "unclassified"
     ) {
       return false;
     }
 
     const roomId = String(room.id);
     const now = Date.now();
-    const previousWorkspace = workspaceState.roomWorkspace?.[roomId]?.workspace;
     let changed = false;
 
     workspaceState.roomWorkspace = workspaceState.roomWorkspace || {};
     workspaceState.roomSnapshots = workspaceState.roomSnapshots || {};
     workspaceState.workspaceRooms = workspaceState.workspaceRooms || {};
-
-    if (previousWorkspace && previousWorkspace !== workspaceLabel) {
-      removeRoomFromWorkspaceState(roomId, previousWorkspace);
-      changed = true;
-    }
 
     const previous = workspaceState.roomWorkspace[roomId] || {};
     if (previous.workspace !== workspaceLabel) {
@@ -1369,15 +1477,20 @@
     let changed = false;
 
     observedRooms.forEach((room) => {
-      if (!room.domWorkspace) {
+      const observedWorkspaces = Array.from(
+        new Set([room.domWorkspace, ...(room.domWorkspaces || [])].filter(Boolean))
+      );
+      if (!observedWorkspaces.length) {
         return;
       }
 
-      if (room.domWorkspace === "unclassified" && shouldDeferUnclassifiedWorkspaceObservation()) {
-        return;
-      }
+      observedWorkspaces.forEach((workspaceLabel) => {
+        if (workspaceLabel === "unclassified" && shouldDeferUnclassifiedWorkspaceObservation()) {
+          return;
+        }
 
-      changed = rememberRoomWorkspace(room, room.domWorkspace) || changed;
+        changed = rememberRoomWorkspace(room, workspaceLabel) || changed;
+      });
     });
 
     if (changed) {
@@ -1577,6 +1690,20 @@
     return Array.from(new Set([...directIds, ...mappedIds].map(String)));
   };
 
+  const roomBelongsToWorkspace = (room, workspaceLabel) => {
+    const manualWorkspace = settings.manualWorkspaces?.[room.id];
+    if (manualWorkspace) {
+      return manualWorkspace === workspaceLabel;
+    }
+
+    const observedWorkspaces = [room.domWorkspace, ...(room.domWorkspaces || [])].filter(Boolean);
+    if (observedWorkspaces.includes(workspaceLabel)) {
+      return true;
+    }
+
+    return getStoredWorkspaceLabelsForRoom(room.id, room.workspace).includes(workspaceLabel);
+  };
+
   const getStateRoomsForWorkspace = (spaceKey) => {
     if (!spaceKey?.startsWith("workspace:")) {
       return [];
@@ -1586,7 +1713,7 @@
     const liveById = new Map(rooms.map((room) => [String(room.id), room]));
     return getStoredWorkspaceRoomIds(workspaceLabel)
       .map((roomId) => liveById.get(roomId) || reviveStoredRoom(roomId, workspaceLabel))
-      .filter(Boolean);
+      .filter((room) => room && roomBelongsToWorkspace(room, workspaceLabel));
   };
 
   const mergeRoomsById = (primaryRooms, fallbackRooms) => {
@@ -1625,7 +1752,7 @@
       return room.type === "dm";
     }
     if (spaceKey.startsWith("workspace:")) {
-      return room.workspace === spaceKey.replace("workspace:", "") && !isSeparatedPersonalRoom(room);
+      return roomBelongsToWorkspace(room, spaceKey.replace("workspace:", ""));
     }
     return true;
   };
@@ -2389,7 +2516,7 @@
     const nextListKey = getListRenderKey();
     const renderState = captureRenderState();
     const root = getRoot();
-    root.replaceChildren(
+    const rootChildren = [
       h("div", { id: APP.shellId, class: settings.enabled ? "" : "is-paused", dataVersion: APP.version }, [
         renderRail(),
         renderPanel(),
@@ -2402,8 +2529,9 @@
             }),
       ]),
       renderOverviewTab(),
-      renderRoomContextMenu()
-    );
+      renderRoomContextMenu(),
+    ].filter(Boolean);
+    root.replaceChildren(...rootChildren);
     restoreRenderState(renderState, nextListKey);
     lastRenderedListKey = nextListKey;
     scheduleFloatingLayerCheck(20);
@@ -2753,6 +2881,43 @@
       node = node.parentElement;
     }
     return null;
+  };
+
+  const getWheelDeltaY = (event, scrollable) => {
+    if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) {
+      return event.deltaY * 16;
+    }
+    if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
+      return event.deltaY * Math.max(1, scrollable.clientHeight);
+    }
+    return event.deltaY;
+  };
+
+  const handleSilroomListWheel = (event) => {
+    if (
+      !settings.enabled ||
+      event.defaultPrevented ||
+      event.ctrlKey ||
+      event.deltaY === 0 ||
+      Math.abs(event.deltaX) > Math.abs(event.deltaY)
+    ) {
+      return;
+    }
+
+    const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+    const root = getRoot();
+    const scrollable = target?.closest?.(SILROOM_SCROLL_SURFACE_SELECTOR);
+    if (!target || !scrollable || !root.contains(scrollable)) {
+      return;
+    }
+
+    const maxScrollTop = Math.max(0, scrollable.scrollHeight - scrollable.clientHeight);
+    if (maxScrollTop > 1) {
+      scrollable.scrollTop = clamp(scrollable.scrollTop + getWheelDeltaY(event, scrollable), 0, maxScrollTop);
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
   };
 
   const handleMainOverscroll = (event) => {
@@ -3186,6 +3351,7 @@
     getRoot().addEventListener("mouseout", handleRailLabelEvent);
     getRoot().addEventListener("focusin", handleRailLabelEvent);
     getRoot().addEventListener("focusout", handleRailLabelEvent);
+    getRoot().addEventListener("wheel", handleSilroomListWheel, { capture: true, passive: false });
     getRoot().addEventListener("dragstart", handleRailDragStart);
     getRoot().addEventListener("dragover", handleRailDragOver);
     getRoot().addEventListener("drop", handleRailDrop);

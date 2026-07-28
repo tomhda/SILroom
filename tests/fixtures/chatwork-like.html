@@ -178,6 +178,44 @@
         padding: 14px 16px;
       }
 
+      .fixture-profileTrigger {
+        align-items: center;
+        background: transparent;
+        border: 0;
+        color: #bfdbfe;
+        cursor: pointer;
+        display: inline-flex;
+        font: inherit;
+        gap: 8px;
+        padding: 0;
+      }
+
+      .fixture-profileTrigger img {
+        border-radius: 50%;
+        height: 28px;
+        width: 28px;
+      }
+
+      .fixture-floatingProfileLayer {
+        background: #f8fafc;
+        border: 1px solid #cbd5e1;
+        border-radius: 10px;
+        box-shadow: 0 18px 48px rgba(0, 0, 0, 0.34);
+        box-sizing: border-box;
+        color: #0f172a;
+        height: 280px;
+        left: 250px;
+        padding: 22px;
+        position: fixed;
+        top: 150px;
+        width: 320px;
+        z-index: 12;
+      }
+
+      .fixture-floatingProfileLayer[hidden] {
+        display: none;
+      }
+
       #_chatSendArea {
         background: #172238;
         border-top: 1px solid #2a3a55;
@@ -253,6 +291,14 @@
               <span class="fixture-title">デモ 花子</span>
               <span class="fixture-badge fixture-badge--unread" aria-label="未読 1"><span><span>1</span></span></span>
             </li>
+            <li id="444444444" role="tab" aria-label="カテゴリ 一郎" data-workspace="サンプルA">
+              <img src="../../assets/icons/icon-32.png?user-c" alt="">
+              <span class="fixture-title">カテゴリ 一郎</span>
+            </li>
+            <li id="444444444" role="tab" aria-label="カテゴリ 一郎" data-workspace="サンプルB">
+              <img src="../../assets/icons/icon-32.png?user-c" alt="">
+              <span class="fixture-title">カテゴリ 一郎</span>
+            </li>
             <li id="333333333" role="tab" aria-label="サンプル日報" data-workspace="サンプルB">
               <img src="../../assets/icons/icon-32.png?ico_group" alt="">
               <span class="fixture-title">サンプル日報</span>
@@ -268,7 +314,12 @@
           <div id="CurrentSelectedRoom">
             <div id="_chatContent">
               <div class="fixture-messageStack">
-                <p>本文エリア</p>
+                <p>
+                  <button id="fixtureProfileTrigger" class="fixture-profileTrigger" type="button">
+                    <img src="../../assets/icons/icon-32.png?message-user" alt="">
+                    サンプル 太郎のプロフィールを開く
+                  </button>
+                </p>
                 <p>スクロール検証用の本文ブロック</p>
                 <p>チャット欄の最下部テスト</p>
               </div>
@@ -284,6 +335,12 @@
         </div>
       </div>
     </div>
+    <div id="fixtureProfilePopup" class="fixture-floatingProfileLayer" hidden>
+      <button id="fixtureProfileClose" type="button">閉じる</button>
+      <h2>サンプル 太郎</h2>
+      <p>プロフィール詳細の重なり順検証用カード</p>
+      <button type="button" data-testid="profile-popup_profile-button">プロフィール</button>
+    </div>
     <script>
       document.addEventListener("click", (event) => {
         const row = event.target.closest?.('#_roomListArea li[role="tab"][id]');
@@ -292,6 +349,14 @@
           candidate.setAttribute("aria-selected", candidate === row ? "true" : "false");
         });
         location.hash = `#!rid${row.id}`;
+      });
+
+      const fixtureProfilePopup = document.getElementById("fixtureProfilePopup");
+      document.getElementById("fixtureProfileTrigger").addEventListener("click", () => {
+        fixtureProfilePopup.hidden = false;
+      });
+      document.getElementById("fixtureProfileClose").addEventListener("click", () => {
+        fixtureProfilePopup.hidden = true;
       });
     </script>
   </body>

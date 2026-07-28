@@ -115,12 +115,16 @@ for (const file of ["src/background.js", "src/content/main.js", "popup.js"]) {
 
 const contentSource = read("src/content/main.js");
 const styleSource = read("styles/silroom.css");
+if (!contentSource.includes(`version: "${manifest.version}"`)) {
+  throw new Error("Content UI version must match the manifest version.");
+}
 if (!/if \(spaceKey === "attention"\) {\s*return room\.mentionCount > 0;\s*}/.test(contentSource)) {
   throw new Error("Attention space must match mention rooms only.");
 }
 
 const popupSource = read("popup.html");
 const popupScriptSource = read("popup.js");
+const popupStyleSource = read("styles/popup.css");
 const buildScriptSource = read("scripts/build-webstore.ps1");
 for (const token of [
   'id="extensionName"',
@@ -129,6 +133,60 @@ for (const token of [
 ]) {
   if (!popupSource.includes(token) && !popupScriptSource.includes(token)) {
     throw new Error(`Missing development-name UI token: ${token}`);
+  }
+}
+
+for (const token of [
+  'id="mentionColor"',
+  'id="mentionColorValue"',
+  'id="mentionColorPreview"',
+  'id="resetMentionColor"',
+  'id="unreadColor"',
+  'id="unreadColorValue"',
+  'id="unreadColorPreview"',
+  'id="resetUnreadColor"',
+  'type="color"',
+  '通知バッジ色',
+  '数字色は背景色に合わせて自動調整',
+]) {
+  if (!popupSource.includes(token)) {
+    throw new Error(`Missing notification color popup control: ${token}`);
+  }
+}
+
+for (const token of [
+  'const DEFAULT_MENTION_COLOR = "#19e58f";',
+  'const DEFAULT_UNREAD_COLOR = "#7aa2ff";',
+  "mentionColor: DEFAULT_MENTION_COLOR",
+  "unreadColor: DEFAULT_UNREAD_COLOR",
+  "const getBadgeTextColor = (backgroundColor) =>",
+]) {
+  if (!popupScriptSource.includes(token) || !contentSource.includes(token)) {
+    throw new Error(`Missing notification color persistence token: ${token}`);
+  }
+}
+
+for (const token of [
+  'mentionColor.addEventListener("change"',
+  'resetMentionColor.addEventListener("click"',
+  'unreadColor.addEventListener("change"',
+  'resetUnreadColor.addEventListener("click"',
+  "mentionColorPreview.style.color = getBadgeTextColor(color);",
+]) {
+  if (!popupScriptSource.includes(token)) {
+    throw new Error(`Missing notification color popup behavior: ${token}`);
+  }
+}
+
+for (const token of [
+  'input[type="color"]',
+  ".popup__colorGrid",
+  ".popup__colorTile",
+  ".popup__badgePreview",
+  ".popup__colorReset",
+]) {
+  if (!popupStyleSource.includes(token)) {
+    throw new Error(`Missing notification color popup style: ${token}`);
   }
 }
 
@@ -153,6 +211,79 @@ if (!modalLayerPattern) {
 
 if (/(tooltip|popover|emoji|mention|suggest|autocomplete|balloon)/.test(modalLayerPattern[1])) {
   throw new Error("Hover and composer helpers must not be treated as modal layers.");
+}
+
+const profileLayerPattern = contentSource.match(/const PROFILE_LAYER_NAME_RE = (\/.*?\/i);/);
+if (!profileLayerPattern) {
+  throw new Error("Chatwork profile layer matcher is missing.");
+}
+
+const profileLayerLiteral = profileLayerPattern[1];
+const profileLayerPatternEnd = profileLayerLiteral.lastIndexOf("/");
+const profileLayerRegex = new RegExp(
+  profileLayerLiteral.slice(1, profileLayerPatternEnd),
+  profileLayerLiteral.slice(profileLayerPatternEnd + 1),
+);
+
+for (const signature of ["contactProfileDialog", "user-profile-card", "プロフィール詳細"]) {
+  if (!profileLayerRegex.test(signature)) {
+    throw new Error(`Profile layer matcher must recognize: ${signature}`);
+  }
+}
+
+for (const signature of ["tooltip", "emojiPopover", "mentionSuggestion"]) {
+  if (profileLayerRegex.test(signature)) {
+    throw new Error(`Profile layer matcher must ignore helper UI: ${signature}`);
+  }
+}
+
+for (const token of [
+  "const PROFILE_LAYER_TEST_ID_SELECTOR =",
+  "const namedProfileLayer = PROFILE_LAYER_NAME_RE.test(signature);",
+  "const profilePositionedAsLayer =",
+  "const containsProfilePopupControl =",
+  "node.querySelector(PROFILE_LAYER_TEST_ID_SELECTOR)",
+  "const profileCardLayer =",
+  "if (profileCardLayer)",
+]) {
+  if (!contentSource.includes(token)) {
+    throw new Error(`Missing Chatwork profile layer behavior: ${token}`);
+  }
+}
+
+for (const token of [
+  'const HEADER_LAYER_CLASS = "silroom-chatwork-header-overlay-open";',
+  'globalHeader: "#_globalHeader",',
+  "const hasChatworkHeaderOverlay = () => {",
+  "if (rect.bottom <= headerRect.bottom + 2) {",
+  "document.documentElement.classList.toggle(HEADER_LAYER_CLASS, hasChatworkHeaderOverlay());",
+]) {
+  if (!contentSource.includes(token)) {
+    throw new Error(`Missing Chatwork header overlay behavior: ${token}`);
+  }
+}
+
+for (const token of [
+  ":root.silroom-chatwork-header-overlay-open #silroom-root {",
+  ":root.silroom-enabled.silroom-chatwork-header-overlay-open #_sideContent {",
+  "pointer-events: none !important;",
+]) {
+  if (!styleSource.includes(token)) {
+    throw new Error(`Missing Chatwork header overlay style: ${token}`);
+  }
+}
+
+const profileFixtureSource = read("tests/fixtures/chatwork-like.html");
+for (const token of [
+  "fixtureProfileTrigger",
+  "fixtureProfilePopup",
+  "fixture-floatingProfileLayer",
+  'data-testid="profile-popup_profile-button"',
+  "プロフィール詳細",
+]) {
+  if (!profileFixtureSource.includes(token)) {
+    throw new Error(`Missing profile popup fixture token: ${token}`);
+  }
 }
 
 for (const token of [
@@ -195,12 +326,14 @@ for (const token of [
 
 for (const token of [
   "--silroom-mention: #19e58f",
-  "--silroom-unread: #7d8ca6",
+  "--silroom-mention-foreground: #04111d",
+  "--silroom-unread: #7aa2ff",
   ".silroom-roomRow.has-unread:not(.has-mention)",
   ".silroom-badge.is-dot",
   ".silroom-roomRailBadge.is-dot",
   "color: var(--silroom-mention-text)",
   "color: var(--silroom-unread-text)",
+  "color: var(--silroom-mention-foreground)",
 ]) {
   if (!styleSource.includes(token)) {
     throw new Error(`Missing separated notification color style: ${token}`);
@@ -211,6 +344,17 @@ const mentionColor = styleSource.match(/--silroom-mention:\s*([^;]+);/)?.[1]?.tr
 const unreadColor = styleSource.match(/--silroom-unread:\s*([^;]+);/)?.[1]?.trim();
 if (!mentionColor || !unreadColor || mentionColor === unreadColor) {
   throw new Error("Mention and unread notification colors must be visibly distinct.");
+}
+
+for (const token of [
+  ".silroom-railBadge.is-unread.is-dot",
+  ".silroom-roomRailBadge.is-unread.is-dot",
+  ".silroom-badge.is-unread.is-dot",
+  "transform: translateX(3px);",
+]) {
+  if (!styleSource.includes(token)) {
+    throw new Error(`Missing unread badge position adjustment: ${token}`);
+  }
 }
 
 for (const token of [
@@ -305,7 +449,7 @@ if (!/if \(BADGELESS_SPACE_KEYS\.has\(space\.key\)\) {\s*return null;\s*}/.test(
 
 for (const token of [
   "workspaceStateKey: \"silroomWorkspaceState\"",
-  "rememberWorkspaceObservations(domRooms)",
+  "rememberWorkspaceObservations(rawDomRooms)",
   "getStateRoomsForWorkspace(spaceKey)",
   "syncNativeWorkspaceIfNeeded(nextSpace)",
   "setupStructureObserver()",
@@ -321,12 +465,47 @@ for (const token of [
 for (const token of [
   "const rawDomRooms = Array.from",
   "const domRooms = dedupeDomRoomsById(rawDomRooms);",
+  "rememberWorkspaceObservations(rawDomRooms);",
   "const choosePreferredDuplicateRoom =",
   "left.domWorkspace === \"unclassified\"",
   "Boolean(left.avatarSrc) !== Boolean(right.avatarSrc)",
 ]) {
   if (!contentSource.includes(token)) {
     throw new Error(`Missing duplicate room guard token: ${token}`);
+  }
+}
+
+for (const token of [
+  "map.set(child, child.dataset.workspace || currentWorkspace || \"\")",
+  "domWorkspace: domWorkspaceMap.get(row) || \"\"",
+  "const roomBelongsToWorkspace = (room, workspaceLabel) =>",
+  "return roomBelongsToWorkspace(room, spaceKey.replace(\"workspace:\", \"\"));",
+  "[room.domWorkspace, ...(room.domWorkspaces || [])]",
+]) {
+  if (!contentSource.includes(token)) {
+    throw new Error(`Missing multi-workspace membership token: ${token}`);
+  }
+}
+
+const rememberRoomWorkspaceSource = contentSource.match(
+  /const rememberRoomWorkspace = \(room, workspaceLabel\) => \{([\s\S]*?)\n  \};/
+)?.[1];
+if (!rememberRoomWorkspaceSource) {
+  throw new Error("Could not inspect room workspace persistence.");
+}
+if (rememberRoomWorkspaceSource.includes("isSeparatedPersonalRoom(room)")) {
+  throw new Error("Personal chats must be persisted in their Chatwork workspaces.");
+}
+if (/removeRoomFromWorkspaceState\(roomId, previousWorkspace\)/.test(rememberRoomWorkspaceSource)) {
+  throw new Error("Remembering a workspace must not remove another workspace membership.");
+}
+
+for (const token of [
+  'id="444444444" role="tab" aria-label="カテゴリ 一郎" data-workspace="サンプルA"',
+  'id="444444444" role="tab" aria-label="カテゴリ 一郎" data-workspace="サンプルB"',
+]) {
+  if (!fixtureSource.includes(token)) {
+    throw new Error(`Fixture must cover DM and multi-workspace membership: ${token}`);
   }
 }
 
@@ -356,7 +535,7 @@ for (const token of [
   "scheduleNativeWorkspaceStableRender(now);",
   "delete workspaceState.workspaceRooms[workspaceName]",
   "const staleManualRoomIds =",
-  "room.domWorkspace === \"unclassified\" && shouldDeferUnclassifiedWorkspaceObservation()",
+  "workspaceLabel === \"unclassified\" && shouldDeferUnclassifiedWorkspaceObservation()",
   "if (workspaceLabel === \"unclassified\")",
   "return forgetRoomWorkspace(room);",
 ]) {
@@ -399,19 +578,53 @@ if (!css.includes(":root.silroom-enabled #_chatSendArea:hover")) {
   throw new Error("Chatwork composer hover/focus stacking rule is missing.");
 }
 
-if (!css.includes(":root.silroom-chatwork-modal-open #silroom-shell")) {
-  throw new Error("Chatwork modal overlay yield rule is missing.");
+const modalYieldRule = css.match(/:root\.silroom-chatwork-modal-open #silroom-root\s*{([^}]*)}/);
+if (!modalYieldRule || !/z-index:\s*0;/.test(modalYieldRule[1])) {
+  throw new Error("Chatwork modal overlay must move the SILroom stacking context behind Chatwork.");
+}
+
+if (/(opacity:\s*0|visibility:\s*hidden|pointer-events:\s*none)/.test(modalYieldRule[1])) {
+  throw new Error("Chatwork modal overlay handling must not hide SILroom.");
+}
+
+if (css.includes(":root.silroom-chatwork-modal-open #silroom-shell")) {
+  throw new Error("Chatwork modal overlay handling must not hide the SILroom shell.");
 }
 
 for (const token of [
   "overscroll-behavior: none !important;",
   ":root.silroom-enabled #_chatContent",
   "overscroll-behavior: contain !important;",
+  "const SILROOM_SCROLL_SURFACE_SELECTOR = [",
+  "const handleSilroomListWheel = (event) =>",
+  'getRoot().addEventListener("wheel", handleSilroomListWheel, { capture: true, passive: false })',
   "const handleMainOverscroll = (event) =>",
   'document.addEventListener("wheel", handleMainOverscroll, { capture: true, passive: false })',
 ]) {
   if (!contentSource.includes(token) && !css.includes(token)) {
     throw new Error(`Missing overscroll guard token: ${token}`);
+  }
+}
+
+for (const token of [
+  "const rootChildren = [",
+  "].filter(Boolean);",
+  "root.replaceChildren(...rootChildren);",
+]) {
+  if (!contentSource.includes(token)) {
+    throw new Error(`Missing root flow guard token: ${token}`);
+  }
+}
+
+if (!/#silroom-root\s*\{[^}]*height:\s*0;[^}]*position:\s*fixed;[^}]*width:\s*0;/s.test(css)) {
+  throw new Error("SILroom root must not add height to the Chatwork document.");
+}
+
+for (const selector of [".silroom-roomList", ".silroom-roomRailList", ".silroom-railGroupWorkspaces"]) {
+  const escaped = selector.replace(".", "\\.");
+  const rule = css.match(new RegExp(`${escaped}\\s*\\{([^}]*)\\}`))?.[1] || "";
+  if (!rule.includes("overscroll-behavior: contain;")) {
+    throw new Error(`${selector} must contain its own scrolling.`);
   }
 }
 
