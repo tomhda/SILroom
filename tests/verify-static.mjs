@@ -29,6 +29,7 @@ const requiredFiles = [
   "styles/popup.css",
   "scripts/build-webstore.ps1",
   "assets/icons/all.svg",
+  "assets/icons/bookmark.svg",
   "assets/icons/dm.svg",
   "assets/icons/mention.svg",
   "assets/icons/pin.svg",
@@ -122,6 +123,32 @@ if (!/if \(spaceKey === "attention"\) {\s*return room\.mentionCount > 0;\s*}/.te
   throw new Error("Attention space must match mention rooms only.");
 }
 
+const spaceOrderSource = contentSource.match(/const SPACE_ORDER = \[([\s\S]*?)\];/)?.[1] || "";
+if (!spaceOrderSource.includes('"bookmark"') || spaceOrderSource.includes('"fixed"')) {
+  throw new Error("Smart-space rail order must include bookmark and exclude fixed.");
+}
+
+const buildSpacesSource = contentSource.match(
+  /const buildSpaces = \(nativeCategoryNames = extractCategoryNames\(\)\) => \{([\s\S]*?)\n  \};/
+)?.[1] || "";
+if (!buildSpacesSource.includes('{ key: "bookmark", label: "ブックマーク"')) {
+  throw new Error("buildSpaces must include the bookmark smart space.");
+}
+if (buildSpacesSource.includes('{ key: "fixed"')) {
+  throw new Error("buildSpaces must not include the fixed smart space.");
+}
+
+for (const pinnedBehavior of [
+  /if \(spaceKey === "fixed"\) {\s*return room\.pinned;\s*}/,
+  /if \(settings\.quickFilter === "fixed"\) {\s*return room\.pinned;\s*}/,
+  /room\.pinned \? h\("span", \{ class: "silroom-pin", title: "固定", text: "固定" \}\) : null/,
+  /renderQuickFilter\("fixed", "固定"\)/,
+]) {
+  if (!pinnedBehavior.test(contentSource)) {
+    throw new Error(`Pinned room behavior changed unexpectedly: ${pinnedBehavior}`);
+  }
+}
+
 const popupSource = read("popup.html");
 const popupScriptSource = read("popup.js");
 const popupStyleSource = read("styles/popup.css");
@@ -200,8 +227,46 @@ for (const token of [
   }
 }
 
-if (!contentSource.includes("const usesQuickFilter = (spaceKey) => !isAttentionSpace(spaceKey);")) {
-  throw new Error("Attention space must not stack quick filters.");
+if (
+  !contentSource.includes(
+    "const usesQuickFilter = (spaceKey) => !isAttentionSpace(spaceKey) && !isNativeBookmarkSpace(spaceKey);"
+  )
+) {
+  throw new Error("Attention and bookmark spaces must not stack quick filters.");
+}
+
+for (const token of [
+  'const isNativeBookmarkSpace = (spaceKey) => spaceKey === "bookmark";',
+  'const targetLabel = bookmarkSelected ? "ブックマーク" : "チャット";',
+  "const findNativeSidebarTab = (label) =>",
+  'sideContent.querySelectorAll(\'button, a, [role="tab"], [role="button"], [tabindex], [aria-label], span\')',
+  '!node.closest(\'[hidden], [aria-hidden="true"]\')',
+  "const semanticCandidates = visibleCandidates.filter(",
+  "const syncVersion = ++nativeSidebarTabSyncVersion;",
+  "syncVersion !== nativeSidebarTabSyncVersion",
+  "isNativeBookmarkSpace(settings.selectedSpace) !== bookmarkSelected",
+  "delay === NATIVE_SIDEBAR_TAB_RETRY_DELAYS.at(-1)",
+  "syncNativeWorkspaceIfNeeded(settings.selectedSpace);",
+  "syncNativeSidebarTab(nextSpace);",
+  "syncNativeSidebarTab(settings.selectedSpace);",
+  'storage.set({ selectedSpace: "all", quickFilter: "all" });',
+]) {
+  if (!contentSource.includes(token)) {
+    throw new Error(`Missing native bookmark behavior: ${token}`);
+  }
+}
+
+for (const token of [
+  ":root.silroom-enabled.silroom-native-bookmarks-open #_sideContent {",
+  "left: var(--silroom-shell-width) !important;",
+  ":root.silroom-enabled.silroom-native-bookmarks-open #_sideContent > * {",
+  "visibility: visible !important;",
+  ":root.silroom-enabled.silroom-native-bookmarks-open #_mainContent {",
+  ":root.silroom-native-bookmarks-open .silroom-panelBody {",
+]) {
+  if (!styleSource.includes(token)) {
+    throw new Error(`Missing native bookmark layout behavior: ${token}`);
+  }
 }
 
 const modalLayerPattern = contentSource.match(/const MODAL_LAYER_NAME_RE = (\/.*?\/i);/);
@@ -369,6 +434,18 @@ for (const token of [
 }
 
 const fixtureSource = read("tests/fixtures/chatwork-like.html");
+for (const token of [
+  'role="tab" aria-label="チャット" aria-selected="true"',
+  'role="tab" aria-label="ブックマーク" aria-selected="false"',
+  'id="_bookmarkListArea" aria-label="ブックマーク一覧" hidden',
+  'event.target.closest?.(\'#sidebarSwitch [role="tab"]\')',
+  'document.documentElement.dataset.fixtureNativeTab = bookmarkSelected ? "bookmark" : "chat";',
+]) {
+  if (!fixtureSource.includes(token)) {
+    throw new Error(`Fixture must emulate native bookmark tabs: ${token}`);
+  }
+}
+
 for (const token of [
   'aria-label="自分宛 2"',
   'data-chatwork-to-me="true"',

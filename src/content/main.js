@@ -5,7 +5,7 @@
     name: "SILroom",
     rootId: "silroom-root",
     shellId: "silroom-shell",
-    version: "0.3",
+    version: "0.4",
     storageKey: "silroomSettings",
     iconsKey: "silroomWorkspaceIcons",
     workspaceStateKey: "silroomWorkspaceState",
@@ -48,7 +48,7 @@
   const SPACE_ORDER = [
     "all",
     "attention",
-    "fixed",
+    "bookmark",
     "unclassified",
     "my",
     "dm",
@@ -64,6 +64,7 @@
   const SMART_SPACE_ICONS = {
     attention: "mention.svg",
     all: "all.svg",
+    bookmark: "bookmark.svg",
     fixed: "pin.svg",
     unclassified: "unclassified.svg",
     my: "my.svg",
@@ -146,6 +147,7 @@
   let nativeWorkspaceStableCount = 0;
   let nativeWorkspaceStableSince = 0;
   let roomReadReceipts = new Map();
+  let nativeSidebarTabSyncVersion = 0;
   let initialized = false;
 
   const API_REFRESH_MIN_INTERVAL = 30000;
@@ -155,6 +157,7 @@
   const MODAL_LAYER_NAME_RE = /(modal|dialog|preview|viewer|lightbox|overlay)/i;
   const PROFILE_LAYER_NAME_RE = /(?:profile(?:[-_\s]*(?:card|detail|dialog|modal|popup|popover|panel))?|contact[-_\s]*(?:card|detail|profile|dialog|modal|popup|popover|panel)|(?:user|member)[-_\s]*(?:card|profile|detail)|プロフィール(?:詳細)?|コンタクト(?:詳細)?)/i;
   const PROFILE_LAYER_TEST_ID_SELECTOR = '[data-testid^="profile-popup_"]';
+  const NATIVE_SIDEBAR_TAB_RETRY_DELAYS = [0, 160, 520];
 
   const isLocalFixturePage = () =>
     ["127.0.0.1", "localhost"].includes(location.hostname) &&
@@ -480,14 +483,19 @@
   };
 
   const applyStateClasses = () => {
+    const panelCollapsed = isPanelCollapsed();
     document.documentElement.classList.toggle("silroom-enabled", settings.enabled);
     document.documentElement.classList.toggle(
       "silroom-overview-collapsed",
       settings.enabled && settings.overviewCollapsed
     );
-    document.documentElement.classList.toggle("silroom-panel-collapsed", settings.enabled && settings.panelCollapsed);
+    document.documentElement.classList.toggle("silroom-panel-collapsed", settings.enabled && panelCollapsed);
+    document.documentElement.classList.toggle(
+      "silroom-native-bookmarks-open",
+      settings.enabled && isNativeBookmarkSpace(settings.selectedSpace)
+    );
     document.documentElement.classList.toggle("silroom-density-compact", settings.density === "compact");
-    const panelWidth = settings.panelCollapsed ? PANEL_WIDTH.collapsed : getPanelWidthValue();
+    const panelWidth = panelCollapsed ? PANEL_WIDTH.collapsed : getPanelWidthValue();
     document.documentElement.style.setProperty("--silroom-panel-current-width", `${panelWidth}px`);
     document.documentElement.style.setProperty("--silroom-panel-expanded-width", `${getPanelWidthValue()}px`);
     const mentionColor = normalizeHexColor(settings.mentionColor, DEFAULT_MENTION_COLOR);
@@ -1615,7 +1623,7 @@
     const baseSpaces = [
       { key: "all", label: "全体", short: "全", kind: "smart", icon: SMART_SPACE_ICONS.all },
       { key: "attention", label: "自分宛", short: "宛", kind: "smart", icon: SMART_SPACE_ICONS.attention },
-      { key: "fixed", label: "固定", short: "固", kind: "smart", icon: SMART_SPACE_ICONS.fixed },
+      { key: "bookmark", label: "ブックマーク", short: "栞", kind: "smart", icon: SMART_SPACE_ICONS.bookmark },
       { key: "unclassified", label: "未分類", short: "未", kind: "smart", icon: SMART_SPACE_ICONS.unclassified },
       { key: "my", label: "マイチャット", short: "自", kind: "smart", icon: SMART_SPACE_ICONS.my },
       { key: "dm", label: "DM", short: "DM", kind: "smart", icon: SMART_SPACE_ICONS.dm },
@@ -1758,8 +1766,10 @@
   };
 
   const isWorkspaceSpace = (spaceKey) => spaceKey?.startsWith("workspace:");
+  const isNativeBookmarkSpace = (spaceKey) => spaceKey === "bookmark";
   const isAttentionSpace = (spaceKey) => spaceKey === "attention";
-  const usesQuickFilter = (spaceKey) => !isAttentionSpace(spaceKey);
+  const isPanelCollapsed = () => settings.panelCollapsed || isNativeBookmarkSpace(settings.selectedSpace);
+  const usesQuickFilter = (spaceKey) => !isAttentionSpace(spaceKey) && !isNativeBookmarkSpace(spaceKey);
 
   const getRoomsForSpace = (spaceKey) => {
     const liveRooms = rooms.filter((room) => roomMatchesSpace(room, spaceKey));
@@ -1832,6 +1842,10 @@
   };
 
   const getVisibleRooms = () => {
+    if (isNativeBookmarkSpace(settings.selectedSpace)) {
+      return [];
+    }
+
     const selectedRooms = getRoomsForSpace(settings.selectedSpace);
     const fallback = spaceRoomCache.get(settings.selectedSpace);
     const pendingCurrentWorkspace =
@@ -1951,6 +1965,10 @@
   };
 
   const getRailBadge = (space, stats) => {
+    if (isNativeBookmarkSpace(space.key)) {
+      return null;
+    }
+
     if (BADGELESS_SPACE_KEYS.has(space.key)) {
       return null;
     }
@@ -2378,16 +2396,17 @@
   };
 
   const renderPanel = () => {
+    const panelCollapsed = isPanelCollapsed();
     const visibleRooms = getVisibleRooms();
     const currentSpace = getCurrentSpace();
     const isPendingWorkspace =
       pendingWorkspaceLoad.key === settings.selectedSpace && Date.now() - pendingWorkspaceLoad.startedAt < 2600;
     const showQuickFilter = usesQuickFilter(settings.selectedSpace);
     const emptyCopy = getEmptyCopy(settings.selectedSpace, isPendingWorkspace);
-    const panelToggleTitle = settings.panelCollapsed ? "チャット一覧を固定表示" : "チャット一覧を細バー化";
+    const panelToggleTitle = panelCollapsed ? "チャット一覧を固定表示" : "チャット一覧を細バー化";
 
     return h("section", { class: "silroom-panel", ariaLabel: "SILroom room list" }, [
-      settings.panelCollapsed ? renderRoomRail(visibleRooms, currentSpace) : null,
+      panelCollapsed ? renderRoomRail(visibleRooms, currentSpace) : null,
       h("div", { class: "silroom-panelBody" }, [
         h("header", { class: "silroom-panelHeader" }, [
           currentSpace?.kind === "workspace" ? renderWorkspaceLogoButton(currentSpace) : null,
@@ -2404,7 +2423,7 @@
               ariaLabel: panelToggleTitle,
               dataAction: "toggle-panel-collapsed",
             },
-            [settings.panelCollapsed ? "›" : "‹"]
+            [panelCollapsed ? "›" : "‹"]
           ),
         ]),
         showQuickFilter
@@ -2453,7 +2472,7 @@
   const escapeSelector = (value) =>
     globalThis.CSS?.escape ? CSS.escape(String(value)) : String(value).replace(/["\\]/g, "\\$&");
 
-  const getListRenderKey = () => `${settings.selectedSpace}|${settings.quickFilter}|${settings.panelCollapsed}`;
+  const getListRenderKey = () => `${settings.selectedSpace}|${settings.quickFilter}|${isPanelCollapsed()}`;
 
   const captureRenderState = () => {
     const root = document.getElementById(APP.rootId);
@@ -2507,8 +2526,7 @@
     spaces = buildSpaces(nativeCategoryNames);
 
     if (!spaces.some((space) => space.key === settings.selectedSpace) && !settings.selectedSpace?.startsWith("workspace:")) {
-      settings.selectedSpace = "all";
-      settings.quickFilter = "all";
+      storage.set({ selectedSpace: "all", quickFilter: "all" });
     }
 
     updateSpaceRoomCache();
@@ -2520,7 +2538,7 @@
       h("div", { id: APP.shellId, class: settings.enabled ? "" : "is-paused", dataVersion: APP.version }, [
         renderRail(),
         renderPanel(),
-        settings.panelCollapsed
+        isPanelCollapsed()
           ? null
           : h("div", {
               class: "silroom-panelResizer",
@@ -2583,6 +2601,88 @@
 
     nativeButton.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
     return true;
+  };
+
+  const getNativeSidebarTabNames = (node) =>
+    [node.getAttribute("aria-label"), node.getAttribute("title"), node.textContent]
+      .map(normalizeText)
+      .filter(Boolean);
+
+  const nativeSidebarTabNameMatches = (name, label) =>
+    name === label ||
+    name.startsWith(`${label} `) ||
+    name.startsWith(`${label}（`) ||
+    name.startsWith(`${label}(`);
+
+  const findNativeSidebarTab = (label) => {
+    const sideContent = document.querySelector(SELECTORS.sideContent);
+    if (!sideContent || !label) {
+      return null;
+    }
+
+    const candidates = Array.from(
+      sideContent.querySelectorAll('button, a, [role="tab"], [role="button"], [tabindex], [aria-label], span')
+    )
+      .map((node) =>
+        node.matches('button, a, [role="tab"], [role="button"], [tabindex]')
+          ? node
+          : node.closest('button, a, [role="tab"], [role="button"], [tabindex]') || node
+      )
+      .filter(
+        (node, index, nodes) =>
+          node instanceof HTMLElement &&
+          node.isConnected &&
+          !node.closest('[hidden], [aria-hidden="true"]') &&
+          nodes.indexOf(node) === index &&
+          getNativeSidebarTabNames(node).some((name) => nativeSidebarTabNameMatches(name, label))
+      );
+
+    const visibleCandidates = candidates.filter((node) => {
+      const rect = node.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0 && getComputedStyle(node).display !== "none";
+    });
+    const semanticCandidates = visibleCandidates.filter(
+      (node) => node.getAttribute("role") === "tab" || Boolean(node.closest('[role="tablist"]'))
+    );
+    return semanticCandidates.at(-1) || visibleCandidates.at(-1) || candidates.at(-1) || null;
+  };
+
+  const activateNativeSidebarTab = (label) => {
+    const nativeTab = findNativeSidebarTab(label);
+    if (!nativeTab) {
+      return false;
+    }
+
+    if (nativeTab.getAttribute("aria-selected") !== "true" && nativeTab.getAttribute("aria-current") !== "page") {
+      nativeTab.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
+    }
+    return true;
+  };
+
+  const syncNativeSidebarTab = (spaceKey) => {
+    const bookmarkSelected = isNativeBookmarkSpace(spaceKey);
+    const targetLabel = bookmarkSelected ? "ブックマーク" : "チャット";
+    const syncVersion = ++nativeSidebarTabSyncVersion;
+
+    NATIVE_SIDEBAR_TAB_RETRY_DELAYS.forEach((delay) => {
+      window.setTimeout(() => {
+        if (
+          syncVersion !== nativeSidebarTabSyncVersion ||
+          isNativeBookmarkSpace(settings.selectedSpace) !== bookmarkSelected
+        ) {
+          return;
+        }
+        const activated = activateNativeSidebarTab(targetLabel);
+        if (
+          activated &&
+          !bookmarkSelected &&
+          delay === NATIVE_SIDEBAR_TAB_RETRY_DELAYS.at(-1) &&
+          isWorkspaceSpace(settings.selectedSpace)
+        ) {
+          syncNativeWorkspaceIfNeeded(settings.selectedSpace);
+        }
+      }, delay);
+    });
   };
 
   const hasFreshWorkspaceState = (spaceKey) => {
@@ -2774,6 +2874,7 @@
       await storage.set({ selectedSpace: nextSpace, quickFilter: "all" });
       syncNativeWorkspaceIfNeeded(nextSpace);
       render();
+      syncNativeSidebarTab(nextSpace);
       debounceRender(350);
       return;
     }
@@ -3399,8 +3500,14 @@
             previousSettings.apiAssistEnabled !== nextSettings.apiAssistEnabled ||
             previousSettings.apiAssistVersion !== nextSettings.apiAssistVersion;
 
+          const nativeSidebarModeChanged =
+            isNativeBookmarkSpace(settings.selectedSpace) !== isNativeBookmarkSpace(nextSettings.selectedSpace);
           settings = nextSettings;
           shouldRender = true;
+
+          if (nativeSidebarModeChanged) {
+            syncNativeSidebarTab(nextSettings.selectedSpace);
+          }
 
           if (apiChanged) {
             scheduleApiRefresh(50, true);
@@ -3421,6 +3528,7 @@
     setupObserver();
     setupStructureObserver();
     render();
+    syncNativeSidebarTab(settings.selectedSpace);
     scheduleRoomReadConfirmation(getCurrentRid(), 300);
     setupFloatingLayerObserver();
     syncNativeWorkspaceIfNeeded(settings.selectedSpace);

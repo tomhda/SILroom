@@ -60,6 +60,25 @@
   width: calc(100% - var(--silroom-shell-width)) !important;
 }
 
+:root.silroom-enabled.silroom-native-bookmarks-open #_sideContent {
+  left: var(--silroom-shell-width) !important;
+  width: var(--silroom-panel-expanded-width) !important;
+}
+
+:root.silroom-enabled.silroom-native-bookmarks-open #_sideContent > * {
+  pointer-events: auto !important;
+  visibility: visible !important;
+}
+
+:root.silroom-enabled.silroom-native-bookmarks-open #_mainContent {
+  left: calc(var(--silroom-shell-width) + var(--silroom-panel-expanded-width)) !important;
+  width: calc(100% - var(--silroom-shell-width) - var(--silroom-panel-expanded-width)) !important;
+}
+
+:root.silroom-native-bookmarks-open .silroom-panelBody {
+  display: none;
+}
+
 :root.silroom-overview-collapsed #_subContent,
 :root.silroom-overview-collapsed .roomMainContent__roomInfo,
 :root.silroom-overview-collapsed #_subContentArea {

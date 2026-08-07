@@ -45,18 +45,50 @@
         align-items: center;
         border-bottom: 1px solid #2a3a55;
         display: flex;
-        gap: 16px;
+        gap: 4px;
         height: 49px;
-        padding: 0 14px;
+        padding: 0 8px;
       }
 
-      #_roomListArea {
+      #sidebarSwitch [role="tab"] {
+        background: transparent;
+        border: 0;
+        border-bottom: 2px solid transparent;
+        color: #9fb3d1;
+        cursor: pointer;
+        font: inherit;
+        height: 100%;
+        padding: 0 8px;
+      }
+
+      #sidebarSwitch [role="tab"][aria-selected="true"] {
+        border-bottom-color: #6aa7ff;
+        color: #eef5ff;
+      }
+
+      #_roomListArea,
+      #_bookmarkListArea {
         bottom: 0;
         left: 0;
         overflow: auto;
         position: absolute;
         right: 0;
         top: 49px;
+      }
+
+      #_roomListArea[hidden],
+      #_bookmarkListArea[hidden] {
+        display: none;
+      }
+
+      .fixture-bookmark {
+        border-bottom: 1px solid #2a3a55;
+        padding: 16px;
+      }
+
+      .fixture-bookmark strong {
+        display: block;
+        margin-bottom: 6px;
       }
 
       .fixture-category {
@@ -254,7 +286,11 @@
     <div id="_header">Chatwork</div>
     <div id="_content">
       <div id="_sideContent" class="roomListContainer">
-        <div id="sidebarSwitch">チャット 自分宛て ブックマーク</div>
+        <div id="sidebarSwitch" role="tablist" aria-label="サイドバー表示">
+          <button type="button" role="tab" aria-label="チャット" aria-selected="true">チャット</button>
+          <button type="button" role="tab" aria-label="自分宛て" aria-selected="false">自分宛て</button>
+          <button type="button" role="tab" aria-label="ブックマーク" aria-selected="false">ブックマーク</button>
+        </div>
         <div id="_roomListArea" class="roomListWithSwitch">
           <div class="fixture-category" role="button" aria-label="サンプルA 自分宛 2">
             <span>サンプルA</span>
@@ -306,6 +342,16 @@
             </li>
           </ul>
         </div>
+        <div id="_bookmarkListArea" aria-label="ブックマーク一覧" hidden>
+          <article class="fixture-bookmark">
+            <strong>保存したメッセージ</strong>
+            <span>ネイティブのブックマーク表示確認用</span>
+          </article>
+          <article class="fixture-bookmark">
+            <strong>保存したファイル</strong>
+            <span>企画書.pdf</span>
+          </article>
+        </div>
       </div>
 
       <div id="_mainContent" class="roomMainContent">
@@ -343,6 +389,19 @@
     </div>
     <script>
       document.addEventListener("click", (event) => {
+        const nativeSidebarTab = event.target.closest?.('#sidebarSwitch [role="tab"]');
+        if (nativeSidebarTab) {
+          const label = nativeSidebarTab.getAttribute("aria-label") || nativeSidebarTab.textContent.trim();
+          document.querySelectorAll('#sidebarSwitch [role="tab"]').forEach((candidate) => {
+            candidate.setAttribute("aria-selected", candidate === nativeSidebarTab ? "true" : "false");
+          });
+          const bookmarkSelected = label === "ブックマーク";
+          document.getElementById("_roomListArea").hidden = bookmarkSelected;
+          document.getElementById("_bookmarkListArea").hidden = !bookmarkSelected;
+          document.documentElement.dataset.fixtureNativeTab = bookmarkSelected ? "bookmark" : "chat";
+          return;
+        }
+
         const row = event.target.closest?.('#_roomListArea li[role="tab"][id]');
         if (!row) return;
         document.querySelectorAll('#_roomListArea li[role="tab"][id]').forEach((candidate) => {
