@@ -216,6 +216,14 @@
   gap: 7px;
 }
 
+.silroom-railGroup:not(.silroom-railGroupWorkspaces) {
+  gap: 2px;
+}
+
+.silroom-railGroup:not(.silroom-railGroupWorkspaces) .silroom-railItem {
+  height: 38px;
+}
+
 .silroom-railGroupWorkspaces {
   min-height: 0;
   overscroll-behavior: contain;
@@ -246,7 +254,7 @@
 .silroom-railDivider {
   background: var(--silroom-border);
   flex: 0 0 1px;
-  margin: 8px 4px;
+  margin: 6px 4px;
 }
 
 .silroom-railFooter {
@@ -1175,6 +1183,22 @@
 
 .silroom-overviewTabText {
   writing-mode: vertical-rl;
+}
+
+/* 概要欄を開いている間は、部屋ヘッダー行の空きに小さなボタンとして置く。
+   右端固定のままだと Chatwork の概要編集ボタン（鉛筆）を覆ってしまう。 */
+:root.silroom-overview-tab-docked .silroom-overviewTab:not(.is-collapsed) {
+  border-radius: 8px;
+  box-shadow: none;
+  height: 30px;
+  left: var(--silroom-overview-tab-left);
+  right: auto;
+  top: var(--silroom-overview-tab-top);
+  width: 30px;
+}
+
+:root.silroom-overview-tab-docked .silroom-overviewTab:not(.is-collapsed) .silroom-overviewTabText {
+  writing-mode: horizontal-tb;
 }
 
 .silroom-hiddenFile {

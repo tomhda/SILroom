@@ -5,7 +5,7 @@
     name: "SILroom",
     rootId: "silroom-root",
     shellId: "silroom-shell",
-    version: "0.4",
+    version: "0.5",
     storageKey: "silroomSettings",
     iconsKey: "silroomWorkspaceIcons",
     workspaceStateKey: "silroomWorkspaceState",
@@ -136,6 +136,8 @@
   let roomReadTimer = 0;
   let observerReconnectTimer = 0;
   let floatingLayerTimer = 0;
+  let overviewResizeObserver = null;
+  let observedOverviewNode = null;
   let apiRefreshInFlight = false;
   let lastRenderedListKey = "";
   let observer = null;
@@ -684,6 +686,45 @@
   const scheduleFloatingLayerCheck = (delay = 80) => {
     clearTimeout(floatingLayerTimer);
     floatingLayerTimer = window.setTimeout(updateFloatingLayerState, delay);
+  };
+
+  // 開いている概要欄の右上には Chatwork 自身の編集ボタン（鉛筆）があるため、
+  // 「閉」タブは部屋ヘッダー行の空きスペース、概要欄の左端の真上に置く。
+  const OVERVIEW_TAB_SIZE = 30;
+  const syncOverviewTabPosition = () => {
+    const overview = document.querySelector(SELECTORS.subContent);
+    const header = document.querySelector(".chatRoomHeader");
+    const overviewRect = overview?.getBoundingClientRect();
+    const headerRect = header?.getBoundingClientRect();
+    const docked = Boolean(
+      settings.enabled &&
+        !settings.overviewCollapsed &&
+        overviewRect?.width > 0 &&
+        headerRect?.height >= OVERVIEW_TAB_SIZE &&
+        headerRect.bottom <= overviewRect.top + 2
+    );
+    document.documentElement.classList.toggle("silroom-overview-tab-docked", docked);
+    if (docked) {
+      const title = header.querySelector(".chatRoomHeader__roomTitle")?.getBoundingClientRect();
+      const headerButtonLefts = Array.from(header.querySelectorAll("button"))
+        .map((button) => button.getBoundingClientRect())
+        .filter((rect) => rect.width > 0 && (!title || rect.left >= title.right))
+        .map((rect) => rect.left);
+      const right = Math.min(overviewRect.left, ...headerButtonLefts.map((left) => left - 8));
+      const left = Math.max(title ? title.right + 8 : 0, right - OVERVIEW_TAB_SIZE);
+      const top = headerRect.top + (headerRect.height - OVERVIEW_TAB_SIZE) / 2;
+      document.documentElement.style.setProperty("--silroom-overview-tab-left", `${Math.round(left)}px`);
+      document.documentElement.style.setProperty("--silroom-overview-tab-top", `${Math.round(top)}px`);
+    }
+
+    if (overview !== observedOverviewNode && globalThis.ResizeObserver) {
+      overviewResizeObserver ||= new ResizeObserver(() => syncOverviewTabPosition());
+      overviewResizeObserver.disconnect();
+      observedOverviewNode = overview || null;
+      if (overview) {
+        overviewResizeObserver.observe(overview);
+      }
+    }
   };
 
   const normalizeText = (value) => String(value || "").replace(/\s+/g, " ").trim();
@@ -2553,6 +2594,7 @@
     restoreRenderState(renderState, nextListKey);
     lastRenderedListKey = nextListKey;
     scheduleFloatingLayerCheck(20);
+    window.requestAnimationFrame(syncOverviewTabPosition);
   };
 
   const selectRoom = (roomId) => {
@@ -3469,7 +3511,10 @@
       scheduleFloatingLayerCheck(20);
       scheduleRoomReadConfirmation(getCurrentRid());
     });
-    window.addEventListener("resize", () => scheduleFloatingLayerCheck(120));
+    window.addEventListener("resize", () => {
+      scheduleFloatingLayerCheck(120);
+      syncOverviewTabPosition();
+    });
     window.addEventListener("focus", () => scheduleInteractiveApiRefresh(250));
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") {
