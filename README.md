@@ -2,6 +2,8 @@
 
 Chatworkのチャットルーム一覧を、スペース分離・DM分離・通知優先度で整理するChrome拡張です。
 
+**[Chrome ウェブストアからインストール](https://chromewebstore.google.com/detail/silroom/cafpgkeajdngmfefonhhpcegjaljfkhk)**
+
 ## Status
 
 初期PoC版です。
