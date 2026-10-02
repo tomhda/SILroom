@@ -4,11 +4,7 @@ Chatworkのチャットルーム一覧を、スペース分離・DM分離・通�
 
 **[Chrome ウェブストアからインストール](https://chromewebstore.google.com/detail/silroom/cafpgkeajdngmfefonhhpcegjaljfkhk)**
 
-## Status
-
-初期PoC版です。
-
-実装済み:
+## Features
 
 - 左端スペースバー
 - 選択中スペース内だけのチャット一覧
