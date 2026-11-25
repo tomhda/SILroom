@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SILroom-Dev",
-  "version": "0.5",
+  "version": "0.6",
   "description": "Chatworkのチャットルーム一覧をスペース化し、1:1チャットと概要欄を扱いやすくするChrome拡張。",
   "permissions": [
     "storage"
@@ -25,7 +25,8 @@
         "https://www.chatwork.com/*"
       ],
       "js": [
-        "src/content/main.js"
+        "src/content/main.js",
+        "src/content/composer-tags.js"
       ],
       "css": [
         "styles/silroom.css"

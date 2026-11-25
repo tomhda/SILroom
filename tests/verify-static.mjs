@@ -23,6 +23,7 @@ const requiredFiles = [
   "manifest.json",
   "src/background.js",
   "src/content/main.js",
+  "src/content/composer-tags.js",
   "styles/silroom.css",
   "popup.html",
   "popup.js",
@@ -97,6 +98,10 @@ if (!contentScript?.js?.includes("src/content/main.js")) {
   throw new Error("Content script entry is not registered.");
 }
 
+if (!contentScript?.js?.includes("src/content/composer-tags.js")) {
+  throw new Error("Composer tags content script is not registered.");
+}
+
 if (!contentScript?.css?.includes("styles/silroom.css")) {
   throw new Error("Content stylesheet is not registered.");
 }
@@ -153,6 +158,21 @@ const popupSource = read("popup.html");
 const popupScriptSource = read("popup.js");
 const popupStyleSource = read("styles/popup.css");
 const buildScriptSource = read("scripts/build-webstore.ps1");
+
+// The Chatwork AI box in the overview can be hidden from the popup.
+for (const [source, token] of [
+  [popupSource, 'id="hideChatworkAi"'],
+  [popupSource, "<strong>Chatwork AI を隠す</strong>"],
+  [popupScriptSource, "hideChatworkAi: false,"],
+  [popupScriptSource, 'persist({ hideChatworkAi: hideChatworkAi.checked })'],
+  [contentSource, "hideChatworkAi: false,"],
+  [contentSource, 'classList.toggle("silroom-hide-chatwork-ai", settings.hideChatworkAi === true);'],
+  [styleSource, ":root.silroom-hide-chatwork-ai #_subAiArea {"],
+]) {
+  if (!source.includes(token)) {
+    throw new Error(`Missing Chatwork AI hiding token: ${token}`);
+  }
+}
 for (const token of [
   'id="extensionName"',
   'chrome.runtime.getManifest().name || "SILroom"',
@@ -261,7 +281,7 @@ for (const token of [
   "left: var(--silroom-shell-width) !important;",
   ":root.silroom-enabled.silroom-native-bookmarks-open #_sideContent > * {",
   "visibility: visible !important;",
-  ":root.silroom-enabled.silroom-native-bookmarks-open #_mainContent {",
+  ":root.silroom-enabled.silroom-native-bookmarks-open #_mainContent:not(.roomMainContent--foldLeft) {",
   ":root.silroom-native-bookmarks-open .silroom-panelBody {",
 ]) {
   if (!styleSource.includes(token)) {
@@ -329,12 +349,44 @@ for (const token of [
 }
 
 for (const token of [
-  ":root.silroom-chatwork-header-overlay-open #silroom-root {",
-  ":root.silroom-enabled.silroom-chatwork-header-overlay-open #_sideContent {",
+  ":root.silroom-chatwork-modal-open #silroom-root,\n:root.silroom-chatwork-header-overlay-open #silroom-root,\n:root.silroom-native-menu-open:not(.silroom-panel-collapsed) #silroom-root {",
+  ":root.silroom-enabled.silroom-chatwork-modal-open #_sideContent,\n:root.silroom-enabled.silroom-chatwork-header-overlay-open #_sideContent,\n:root.silroom-enabled.silroom-native-menu-open:not(.silroom-panel-collapsed) #_sideContent {",
+  ":root.silroom-panel-collapsed .silroom-panel.is-holding .silroom-panelBody,\n:root.silroom-panel-collapsed.silroom-native-menu-open .silroom-panelBody {",
   "pointer-events: none !important;",
 ]) {
   if (!styleSource.includes(token)) {
     throw new Error(`Missing Chatwork header overlay style: ${token}`);
+  }
+}
+
+// Chatwork's own list is hidden, so its "+" menu and category menus open from the panel header.
+for (const token of [
+  'createButtonSelector: \'[data-testid="room-list-header_create-chat-room-menu"]\',',
+  'layerClass: "silroom-native-menu-open",',
+  "const placeNativeCreateMenu = (menu) => {",
+  "const runNativeCategoryCommand = async (label, commandKey) => {",
+  "const MODAL_DIALOG_CHILD_SELECTOR = '.dialogContainer, [role=\"dialog\"], [aria-modal=\"true\"]';",
+  "const left = `${Math.round(menuLeft - (menuRect.left - layerRect.left))}px`;",
+  'dataAction: "open-create-menu",',
+  'dataAction: "open-category-menu",',
+  '{ key: "edit", label: "カテゴリーを編集", nativeLabel: "編集" },',
+  '{ key: "delete", label: "カテゴリーを削除", nativeLabel: "削除" },',
+  'document.addEventListener("pointerdown", handleMenuPointerDown, true);',
+]) {
+  if (!contentSource.includes(token)) {
+    throw new Error(`Missing native menu entry token: ${token}`);
+  }
+}
+
+for (const token of [
+  ".silroom-headerButton:hover,",
+  ".silroom-headerButton:active,",
+  ':root.silroom-native-menu-open .silroom-headerButton[data-action="open-create-menu"] {',
+  ":root.light .silroom-headerButton:hover,",
+  ".silroom-roomMenuOption:active {",
+]) {
+  if (!styleSource.includes(token)) {
+    throw new Error(`Missing native menu entry style: ${token}`);
   }
 }
 
@@ -539,6 +591,23 @@ for (const token of [
   }
 }
 
+// Open native categories replace what SILroom learned, and a later Chatwork change
+// takes over from a SILroom menu assignment.
+for (const token of [
+  "const readNativeCategorySections = (listArea) => {",
+  'if (header.getAttribute("aria-expanded") !== "true") {',
+  "applyNativeCategoryMembership(listArea);",
+  "manualWorkspaceNative: {}",
+  "manualWorkspaceNative[roomId] = getNativeCategoryLabelsForRoom(getReadableNativeCategorySections(), roomId);",
+  'if (manualTypes[roomId] === "room") {',
+  "storage.set({ manualTypes, manualWorkspaces, manualWorkspaceNative });",
+  'if (nativeButton.hasAttribute("aria-expanded")) {',
+]) {
+  if (!contentSource.includes(token)) {
+    throw new Error(`Missing native category membership token: ${token}`);
+  }
+}
+
 for (const token of [
   "const rawDomRooms = Array.from",
   "const domRooms = dedupeDomRoomsById(rawDomRooms);",
@@ -635,10 +704,51 @@ if (!/characterData:\s*true/.test(contentSource)) {
 }
 
 const css = read("styles/silroom.css");
-for (const token of ["#silroom-shell", ".silroom-rail", ".silroom-panel", ".silroom-overviewTab"]) {
+for (const token of ["#silroom-shell", ".silroom-rail", ".silroom-panel", "button[data-silroom-fold]"]) {
   if (!css.includes(token)) {
     throw new Error(`Missing CSS token: ${token}`);
   }
+}
+
+// Chatwork's own fold buttons replace SILroom's collapse buttons and overview tab.
+for (const token of [
+  "#_mainContent:not(.roomMainContent--foldLeft) {",
+  "#_mainContent.roomMainContent--foldLeft {",
+  "body.light button[data-silroom-fold]",
+  ":root.silroom-fold-resizing *",
+  // SILroom's root hangs off <html>, so the light panel keys off Chatwork's class there.
+  ":root.light {",
+  ":root.light .silroom-rail,",
+  ":root.light .silroom-railIconImage.is-builtin,",
+]) {
+  if (!css.includes(token)) {
+    throw new Error(`Missing native fold style: ${token}`);
+  }
+}
+
+for (const token of [
+  'iconSelector: \'use[href="#icon_areaScaleButtonLeft"], use[href="#icon_areaScaleButtonRight"]\'',
+  'listFoldedClass: "roomMainContent--foldLeft"',
+  'overviewFoldedClass: "roomInformationContentContainer--foldRight"',
+  'overviewWidthKey: "ui_subcontent_width"',
+  'document.addEventListener("pointerdown", handleFoldPointerDown, true);',
+  "const isPanelCollapsed = () => isNativeListFolded() || isNativeBookmarkSpace(settings.selectedSpace);",
+  "runLayoutMigration();",
+  "unmarkFoldButtons();",
+]) {
+  if (!contentSource.includes(token)) {
+    throw new Error(`Missing native fold behavior: ${token}`);
+  }
+}
+
+for (const removed of ["toggle-overview", "toggle-panel-collapsed", "silroom-overview-tab", "silroom-overviewTab"]) {
+  if (contentSource.includes(removed) || css.includes(removed)) {
+    throw new Error(`SILroom must not draw its own fold control: ${removed}`);
+  }
+}
+
+if (popupSource.includes("overviewCollapsed") || popupScriptSource.includes("overviewCollapsed")) {
+  throw new Error("Popup must not offer the overview setting that Chatwork now owns.");
 }
 
 const zIndexMatch = css.match(/--silroom-z-index:\s*(\d+);/);
@@ -655,7 +765,7 @@ if (!css.includes(":root.silroom-enabled #_chatSendArea:hover")) {
   throw new Error("Chatwork composer hover/focus stacking rule is missing.");
 }
 
-const modalYieldRule = css.match(/:root\.silroom-chatwork-modal-open #silroom-root\s*{([^}]*)}/);
+const modalYieldRule = css.match(/:root\.silroom-chatwork-modal-open #silroom-root,[^{]*{([^}]*)}/);
 if (!modalYieldRule || !/z-index:\s*0;/.test(modalYieldRule[1])) {
   throw new Error("Chatwork modal overlay must move the SILroom stacking context behind Chatwork.");
 }

@@ -11,8 +11,8 @@
     enabled: true,
     selectedSpace: "all",
     quickFilter: "all",
-    overviewCollapsed: true,
-    panelCollapsed: false,
+    composerTags: true,
+    hideChatworkAi: false,
     panelWidth: 302,
     density: "comfortable",
     manualTypes: {},
@@ -109,7 +109,8 @@
     let settings = await getSettings();
     let secrets = await getSecrets();
     const enabled = document.getElementById("enabled");
-    const overviewCollapsed = document.getElementById("overviewCollapsed");
+    const composerTags = document.getElementById("composerTags");
+    const hideChatworkAi = document.getElementById("hideChatworkAi");
     const defaultSpace = document.getElementById("defaultSpace");
     const mentionColor = document.getElementById("mentionColor");
     const mentionColorValue = document.getElementById("mentionColorValue");
@@ -127,7 +128,8 @@
     const apiStatus = document.getElementById("apiStatus");
 
     enabled.checked = settings.enabled;
-    overviewCollapsed.checked = settings.overviewCollapsed;
+    composerTags.checked = settings.composerTags !== false;
+    hideChatworkAi.checked = settings.hideChatworkAi === true;
     defaultSpace.value = settings.selectedSpace;
     mentionColor.value = normalizeHexColor(settings.mentionColor, DEFAULT_MENTION_COLOR);
     unreadColor.value = normalizeHexColor(settings.unreadColor, DEFAULT_UNREAD_COLOR);
@@ -159,7 +161,8 @@
     const bumpApiAssistVersion = () => Date.now();
 
     enabled.addEventListener("change", () => persist({ enabled: enabled.checked }));
-    overviewCollapsed.addEventListener("change", () => persist({ overviewCollapsed: overviewCollapsed.checked }));
+    composerTags.addEventListener("change", () => persist({ composerTags: composerTags.checked }));
+    hideChatworkAi.addEventListener("change", () => persist({ hideChatworkAi: hideChatworkAi.checked }));
     defaultSpace.addEventListener("change", () => persist({ selectedSpace: defaultSpace.value, quickFilter: "all" }));
     mentionColor.addEventListener("input", syncMentionColorPreview);
     mentionColor.addEventListener("change", () =>

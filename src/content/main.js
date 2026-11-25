@@ -5,7 +5,7 @@
     name: "SILroom",
     rootId: "silroom-root",
     shellId: "silroom-shell",
-    version: "0.5",
+    version: "0.6",
     storageKey: "silroomSettings",
     iconsKey: "silroomWorkspaceIcons",
     workspaceStateKey: "silroomWorkspaceState",
@@ -30,12 +30,14 @@
     enabled: true,
     selectedSpace: "all",
     quickFilter: "all",
-    overviewCollapsed: true,
-    panelCollapsed: false,
+    composerTags: true,
+    hideChatworkAi: false,
+    layoutMigrated: false,
     panelWidth: 302,
     density: "comfortable",
     manualTypes: {},
     manualWorkspaces: {},
+    manualWorkspaceNative: {},
     workspaceIcons: {},
     workspaceOrder: [],
     allBadgeEnabled: false,
@@ -60,6 +62,35 @@
     default: 302,
     collapsed: 54,
   };
+
+  // Chatwork's own fold buttons sit at the left and right edges of the message box.
+  // SILroom follows them instead of keeping open/close buttons of its own.
+  const NATIVE_FOLD = {
+    iconSelector: 'use[href="#icon_areaScaleButtonLeft"], use[href="#icon_areaScaleButtonRight"]',
+    leftIconHref: "#icon_areaScaleButtonLeft",
+    listFoldedClass: "roomMainContent--foldLeft",
+    overviewFoldedClass: "roomInformationContentContainer--foldRight",
+    overviewWidthKey: "ui_subcontent_width",
+    overviewMinWidth: 300,
+    timelineMinWidth: 400,
+    dragThreshold: 3,
+  };
+  const FOLD_BUTTON_TOOLTIP = "押す：開く・畳む　押したまま動かす：幅を変える";
+
+  // Chatwork's own list stays hidden under SILroom, so its "+" menu and each category's
+  // menu are reached from buttons in SILroom's panel header.
+  const NATIVE_MENUS = {
+    createButtonSelector: '[data-testid="room-list-header_create-chat-room-menu"]',
+    createMenuItemSelector: '[role="menu"] [data-testid="room-list-header_create-custom-category"]',
+    categoryMenuButtonSelector: 'button[aria-label="カテゴリーメニューを開く"]',
+    layerClass: "silroom-native-menu-open",
+    gap: 4,
+  };
+  const CATEGORY_COMMANDS = [
+    { key: "edit", label: "カテゴリーを編集", nativeLabel: "編集" },
+    { key: "delete", label: "カテゴリーを削除", nativeLabel: "削除" },
+  ];
+  const SVG_NS = "http://www.w3.org/2000/svg";
 
   const SMART_SPACE_ICONS = {
     attention: "mention.svg",
@@ -127,6 +158,9 @@
   let pendingWorkspaceLoad = { key: "", startedAt: 0 };
   let draggingWorkspaceLabel = "";
   let roomMenuState = { roomId: "", x: 0, y: 0 };
+  let categoryMenuState = { label: "", x: 0, y: 0 };
+  let nativeCreateMenuAnchor = null;
+  let nativeCreateMenuOpenAtPress = false;
   let suppressRailClickUntil = 0;
   let panelResizeState = null;
   let renderTimer = 0;
@@ -136,8 +170,11 @@
   let roomReadTimer = 0;
   let observerReconnectTimer = 0;
   let floatingLayerTimer = 0;
-  let overviewResizeObserver = null;
-  let observedOverviewNode = null;
+  let foldPress = null;
+  let foldSyncFrame = 0;
+  let lastNativeListFolded = null;
+  let layoutMigrationRunning = false;
+  const foldButtonOriginals = new WeakMap();
   let apiRefreshInFlight = false;
   let lastRenderedListKey = "";
   let observer = null;
@@ -148,6 +185,9 @@
   let nativeWorkspaceSignature = "";
   let nativeWorkspaceStableCount = 0;
   let nativeWorkspaceStableSince = 0;
+  let nativeSectionSignature = "";
+  let nativeSectionStableSince = 0;
+  let appliedNativeSectionSignature = "";
   let roomReadReceipts = new Map();
   let nativeSidebarTabSyncVersion = 0;
   let initialized = false;
@@ -157,6 +197,7 @@
   const MODAL_LAYER_CLASS = "silroom-chatwork-modal-open";
   const HEADER_LAYER_CLASS = "silroom-chatwork-header-overlay-open";
   const MODAL_LAYER_NAME_RE = /(modal|dialog|preview|viewer|lightbox|overlay)/i;
+  const MODAL_DIALOG_CHILD_SELECTOR = '.dialogContainer, [role="dialog"], [aria-modal="true"]';
   const PROFILE_LAYER_NAME_RE = /(?:profile(?:[-_\s]*(?:card|detail|dialog|modal|popup|popover|panel))?|contact[-_\s]*(?:card|detail|profile|dialog|modal|popup|popover|panel)|(?:user|member)[-_\s]*(?:card|profile|detail)|プロフィール(?:詳細)?|コンタクト(?:詳細)?)/i;
   const PROFILE_LAYER_TEST_ID_SELECTOR = '[data-testid^="profile-popup_"]';
   const NATIVE_SIDEBAR_TAB_RETRY_DELAYS = [0, 160, 520];
@@ -485,18 +526,16 @@
   };
 
   const applyStateClasses = () => {
+    lastNativeListFolded = isNativeListFolded();
     const panelCollapsed = isPanelCollapsed();
     document.documentElement.classList.toggle("silroom-enabled", settings.enabled);
-    document.documentElement.classList.toggle(
-      "silroom-overview-collapsed",
-      settings.enabled && settings.overviewCollapsed
-    );
     document.documentElement.classList.toggle("silroom-panel-collapsed", settings.enabled && panelCollapsed);
     document.documentElement.classList.toggle(
       "silroom-native-bookmarks-open",
       settings.enabled && isNativeBookmarkSpace(settings.selectedSpace)
     );
     document.documentElement.classList.toggle("silroom-density-compact", settings.density === "compact");
+    document.documentElement.classList.toggle("silroom-hide-chatwork-ai", settings.hideChatworkAi === true);
     const panelWidth = panelCollapsed ? PANEL_WIDTH.collapsed : getPanelWidthValue();
     document.documentElement.style.setProperty("--silroom-panel-current-width", `${panelWidth}px`);
     document.documentElement.style.setProperty("--silroom-panel-expanded-width", `${getPanelWidthValue()}px`);
@@ -597,7 +636,20 @@
       return true;
     }
 
-    if (!positionedAsLayer || !largeModal || (!semanticModal && !namedModalLayer && !hasLargeMediaPreview)) {
+    if (!positionedAsLayer || !largeModal) {
+      return false;
+    }
+
+    // Chatwork's create/edit dialogs sit in an unnamed full-screen layer around a .dialogContainer.
+    const holdsDialog =
+      semanticModal ||
+      namedModalLayer ||
+      hasLargeMediaPreview ||
+      [...node.querySelectorAll(MODAL_DIALOG_CHILD_SELECTOR)].some((child) => {
+        const childRect = child.getBoundingClientRect();
+        return childRect.width >= 200 && childRect.height >= 80;
+      });
+    if (!holdsDialog) {
       return false;
     }
 
@@ -678,9 +730,133 @@
     return false;
   };
 
+  const getOpenNativeCreateMenu = () => {
+    const menu = document.querySelector(NATIVE_MENUS.createMenuItemSelector)?.closest('[role="menu"]');
+    const rect = menu?.getBoundingClientRect();
+    return rect?.width && rect.height ? menu : null;
+  };
+
+  const getFixedLayer = (node) => {
+    for (let current = node; current && current !== document.body; current = current.parentElement) {
+      if (getComputedStyle(current).position === "fixed") {
+        return current;
+      }
+    }
+    return null;
+  };
+
+  // Chatwork opens the menu under its own hidden "+" button; move it under SILroom's button.
+  const placeNativeCreateMenu = (menu) => {
+    const layer = getFixedLayer(menu);
+    if (!layer || !nativeCreateMenuAnchor) {
+      return;
+    }
+
+    const viewportWidth = document.documentElement.clientWidth || window.innerWidth || 1280;
+    const menuRect = menu.getBoundingClientRect();
+    const layerRect = layer.getBoundingClientRect();
+    // The layer pads the menu, so place the layer by where the menu itself should land.
+    const menuLeft = clamp(nativeCreateMenuAnchor.left, 8, Math.max(8, viewportWidth - menuRect.width - 8));
+    const left = `${Math.round(menuLeft - (menuRect.left - layerRect.left))}px`;
+    const top = `${Math.round(nativeCreateMenuAnchor.top - (menuRect.top - layerRect.top))}px`;
+    if (layer.style.left !== left) {
+      layer.style.left = left;
+    }
+    if (layer.style.top !== top) {
+      layer.style.top = top;
+    }
+  };
+
   const updateFloatingLayerState = () => {
+    const createMenu = settings.enabled ? getOpenNativeCreateMenu() : null;
+    if (createMenu) {
+      placeNativeCreateMenu(createMenu);
+    }
+    document.documentElement.classList.toggle(NATIVE_MENUS.layerClass, Boolean(createMenu));
     document.documentElement.classList.toggle(MODAL_LAYER_CLASS, hasChatworkModalLayer());
     document.documentElement.classList.toggle(HEADER_LAYER_CLASS, hasChatworkHeaderOverlay());
+  };
+
+  // Resolves with the node once find() returns it. The observer runs before the next paint,
+  // so a native menu opened only to pick one of its items is never seen.
+  const waitForNode = (find, timeout = 600) =>
+    new Promise((resolve) => {
+      const found = find();
+      if (found) {
+        resolve(found);
+        return;
+      }
+
+      let timer = 0;
+      const observer = new MutationObserver(() => {
+        const node = find();
+        if (node) {
+          observer.disconnect();
+          clearTimeout(timer);
+          resolve(node);
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+      timer = window.setTimeout(() => {
+        observer.disconnect();
+        resolve(find());
+      }, timeout);
+    });
+
+  const clickNode = (node) =>
+    node.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
+
+  const openNativeCreateMenu = (button) => {
+    const nativeButton = document.querySelector(NATIVE_MENUS.createButtonSelector);
+    if (!nativeButton) {
+      return;
+    }
+
+    const rect = button.getBoundingClientRect();
+    // On the collapsed bar the panel floats over the chat and stays in front, so the menu
+    // opens beside it instead of under the button.
+    const floatingBody = isPanelCollapsed() ? button.closest(".silroom-panelBody") : null;
+    nativeCreateMenuAnchor = floatingBody
+      ? { top: rect.top, left: floatingBody.getBoundingClientRect().right + NATIVE_MENUS.gap }
+      : { top: rect.bottom + NATIVE_MENUS.gap, left: rect.left };
+    waitForNode(getOpenNativeCreateMenu).then(updateFloatingLayerState);
+    clickNode(nativeButton);
+  };
+
+  const closeNativeCreateMenu = () => {
+    const nativeButton = document.querySelector(NATIVE_MENUS.createButtonSelector);
+    if (nativeButton && getOpenNativeCreateMenu()) {
+      clickNode(nativeButton);
+    }
+    scheduleFloatingLayerCheck(20);
+  };
+
+  const findNativeCategoryHeader = (label) =>
+    Array.from(document.querySelectorAll(`${SELECTORS.roomListArea} [role="button"][aria-expanded]`)).find(
+      (header) => isNativeCategoryButton(header) && getNativeCategoryName(header) === label
+    ) || null;
+
+  // Opens Chatwork's own edit dialog or delete confirmation for the category. Saving and
+  // deleting stay with the buttons in Chatwork's dialog.
+  const runNativeCategoryCommand = async (label, commandKey) => {
+    const command = CATEGORY_COMMANDS.find((item) => item.key === commandKey);
+    const opener = findNativeCategoryHeader(label)?.querySelector(NATIVE_MENUS.categoryMenuButtonSelector);
+    if (!command || !opener) {
+      return;
+    }
+
+    const findItem = () =>
+      Array.from(document.querySelectorAll('[role="menu"] [role="menuitem"]')).find(
+        (item) => normalizeText(item.textContent) === command.nativeLabel
+      ) || null;
+    const pendingItem = waitForNode(findItem);
+    clickNode(opener);
+    const item = await pendingItem;
+    if (item) {
+      clickNode(item);
+    } else if (document.querySelector('[role="menu"]')) {
+      clickNode(opener);
+    }
   };
 
   const scheduleFloatingLayerCheck = (delay = 80) => {
@@ -688,43 +864,292 @@
     floatingLayerTimer = window.setTimeout(updateFloatingLayerState, delay);
   };
 
-  // 開いている概要欄の右上には Chatwork 自身の編集ボタン（鉛筆）があるため、
-  // 「閉」タブは部屋ヘッダー行の空きスペース、概要欄の左端の真上に置く。
-  const OVERVIEW_TAB_SIZE = 30;
-  const syncOverviewTabPosition = () => {
-    const overview = document.querySelector(SELECTORS.subContent);
-    const header = document.querySelector(".chatRoomHeader");
-    const overviewRect = overview?.getBoundingClientRect();
-    const headerRect = header?.getBoundingClientRect();
-    const docked = Boolean(
-      settings.enabled &&
-        !settings.overviewCollapsed &&
-        overviewRect?.width > 0 &&
-        headerRect?.height >= OVERVIEW_TAB_SIZE &&
-        headerRect.bottom <= overviewRect.top + 2
-    );
-    document.documentElement.classList.toggle("silroom-overview-tab-docked", docked);
-    if (docked) {
-      const title = header.querySelector(".chatRoomHeader__roomTitle")?.getBoundingClientRect();
-      const headerButtonLefts = Array.from(header.querySelectorAll("button"))
-        .map((button) => button.getBoundingClientRect())
-        .filter((rect) => rect.width > 0 && (!title || rect.left >= title.right))
-        .map((rect) => rect.left);
-      const right = Math.min(overviewRect.left, ...headerButtonLefts.map((left) => left - 8));
-      const left = Math.max(title ? title.right + 8 : 0, right - OVERVIEW_TAB_SIZE);
-      const top = headerRect.top + (headerRect.height - OVERVIEW_TAB_SIZE) / 2;
-      document.documentElement.style.setProperty("--silroom-overview-tab-left", `${Math.round(left)}px`);
-      document.documentElement.style.setProperty("--silroom-overview-tab-top", `${Math.round(top)}px`);
+  const isNativeListFolded = () =>
+    Boolean(document.querySelector(SELECTORS.mainContent)?.classList.contains(NATIVE_FOLD.listFoldedClass));
+
+  const isNativeOverviewFolded = () =>
+    Boolean(document.querySelector(SELECTORS.subContent)?.classList.contains(NATIVE_FOLD.overviewFoldedClass));
+
+  // The arrow on each button shows which way it moves the edge: the left button points
+  // left while the list is open, the right button points right while the overview is open.
+  const getFoldButtons = () => {
+    const sendArea = document.querySelector(SELECTORS.sendArea);
+    const buttons = {};
+    if (!sendArea) {
+      return buttons;
     }
 
-    if (overview !== observedOverviewNode && globalThis.ResizeObserver) {
-      overviewResizeObserver ||= new ResizeObserver(() => syncOverviewTabPosition());
-      overviewResizeObserver.disconnect();
-      observedOverviewNode = overview || null;
-      if (overview) {
-        overviewResizeObserver.observe(overview);
+    const areaRect = sendArea.getBoundingClientRect();
+    const middle = areaRect.left + areaRect.width / 2;
+    for (const icon of sendArea.querySelectorAll(NATIVE_FOLD.iconSelector)) {
+      const button = icon.closest("button");
+      const rect = button?.getBoundingClientRect();
+      if (!rect?.width) {
+        continue;
+      }
+      const side = rect.left + rect.width / 2 < middle ? "left" : "right";
+      const pointsLeft = icon.getAttribute("href") === NATIVE_FOLD.leftIconHref;
+      buttons[side] = { button, open: side === "left" ? pointsLeft : !pointsLeft };
+    }
+    return buttons;
+  };
+
+  const setAttributeIfChanged = (node, name, value) => {
+    if (node.getAttribute(name) !== value) {
+      node.setAttribute(name, value);
+    }
+  };
+
+  const restoreAttribute = (node, name, value) => {
+    if (value === null) {
+      node.removeAttribute(name);
+    } else {
+      setAttributeIfChanged(node, name, value);
+    }
+  };
+
+  const markFoldButtons = () => {
+    for (const [side, { button, open }] of Object.entries(getFoldButtons())) {
+      if (!foldButtonOriginals.has(button)) {
+        foldButtonOriginals.set(button, {
+          ariaLabel: button.getAttribute("aria-label"),
+          tooltip: button.getAttribute("data-tooltip"),
+          delay: button.getAttribute("data-delay"),
+          describes: button.classList.contains("_showDescription"),
+        });
+      }
+      const label =
+        side === "left"
+          ? open
+            ? "チャット一覧を畳む"
+            : "チャット一覧を開く"
+          : open
+            ? "概要欄を畳む"
+            : "概要欄を開く";
+      setAttributeIfChanged(button, "data-silroom-fold", side);
+      setAttributeIfChanged(button, "data-silroom-fold-state", open ? "open" : "closed");
+      setAttributeIfChanged(button, "aria-label", label);
+      setAttributeIfChanged(button, "data-tooltip", FOLD_BUTTON_TOOLTIP);
+      setAttributeIfChanged(button, "data-delay", "0");
+      if (!button.classList.contains("_showDescription")) {
+        button.classList.add("_showDescription");
       }
     }
+  };
+
+  const unmarkFoldButtons = () => {
+    for (const button of document.querySelectorAll("button[data-silroom-fold]")) {
+      const original = foldButtonOriginals.get(button);
+      button.removeAttribute("data-silroom-fold");
+      button.removeAttribute("data-silroom-fold-state");
+      if (!original) {
+        continue;
+      }
+      restoreAttribute(button, "aria-label", original.ariaLabel);
+      restoreAttribute(button, "data-tooltip", original.tooltip);
+      restoreAttribute(button, "data-delay", original.delay);
+      if (!original.describes) {
+        button.classList.remove("_showDescription");
+      }
+      foldButtonOriginals.delete(button);
+    }
+  };
+
+  // Before 0.6, SILroom kept its own open/close state for the list and the overview.
+  // Hand that state to Chatwork's buttons once, so the screen looks the same after the update.
+  const runLayoutMigration = () => {
+    if (settings.layoutMigrated || layoutMigrationRunning || !settings.enabled) {
+      return;
+    }
+
+    const { left, right } = getFoldButtons();
+    if (!left || !right) {
+      return;
+    }
+
+    layoutMigrationRunning = true;
+    const { panelCollapsed, overviewCollapsed } = settings;
+    if (typeof panelCollapsed === "boolean" && panelCollapsed !== isNativeListFolded()) {
+      left.button.click();
+    }
+    if (overviewCollapsed === true && !isNativeOverviewFolded()) {
+      getFoldButtons().right?.button.click();
+    }
+
+    const migrated = { ...settings, layoutMigrated: true };
+    delete migrated.panelCollapsed;
+    delete migrated.overviewCollapsed;
+    settings = migrated;
+    storage.set({}).finally(() => {
+      layoutMigrationRunning = false;
+    });
+  };
+
+  const syncNativeFold = () => {
+    foldSyncFrame = 0;
+    if (!initialized) {
+      return;
+    }
+
+    if (isNativeListFolded() !== lastNativeListFolded) {
+      render();
+    }
+
+    if (settings.enabled) {
+      markFoldButtons();
+      runLayoutMigration();
+    } else {
+      unmarkFoldButtons();
+    }
+  };
+
+  const scheduleNativeFoldSync = () => {
+    if (!foldSyncFrame) {
+      foldSyncFrame = window.requestAnimationFrame(syncNativeFold);
+    }
+  };
+
+  const getOverviewWidthLimit = () => {
+    const mainWidth = document.querySelector(SELECTORS.mainContent)?.getBoundingClientRect().width || window.innerWidth;
+    return Math.max(NATIVE_FOLD.overviewMinWidth, mainWidth - NATIVE_FOLD.timelineMinWidth);
+  };
+
+  // Write the width where Chatwork keeps it, so its own edge handle and its next layout pass agree.
+  const setOverviewWidth = (width) => {
+    const overview = document.querySelector(SELECTORS.subContent);
+    if (!overview) {
+      return;
+    }
+    const nextWidth = Math.round(clamp(width, NATIVE_FOLD.overviewMinWidth, getOverviewWidthLimit()));
+    overview.style.width = `${nextWidth}px`;
+    try {
+      localStorage.setItem(NATIVE_FOLD.overviewWidthKey, String(nextWidth));
+    } catch {
+      // Storage can be unavailable; the width still applies to this page.
+    }
+  };
+
+  // Chatwork lays the page out again shortly after a resize event and re-reads the saved
+  // overview width, which also moves the parts it places from that width.
+  const requestChatworkRelayout = () => window.dispatchEvent(new Event("resize"));
+
+  const getSpaceRailRight = () => getRoot().querySelector(".silroom-rail")?.getBoundingClientRect().right || 0;
+
+  const suppressNextTrustedClick = () => {
+    const swallow = (event) => {
+      if (event.isTrusted) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+    window.addEventListener("click", swallow, true);
+    window.setTimeout(() => window.removeEventListener("click", swallow, true), 0);
+  };
+
+  const stopFoldPress = () => {
+    window.removeEventListener("pointermove", handleFoldPointerMove, true);
+    window.removeEventListener("pointerup", handleFoldPointerUp, true);
+    window.removeEventListener("pointercancel", handleFoldPointerUp, true);
+    document.documentElement.classList.remove(
+      "silroom-fold-resizing",
+      "silroom-fold-resizing--left",
+      "silroom-fold-resizing--right"
+    );
+    foldPress = null;
+  };
+
+  // Press and release: Chatwork opens or closes the column as usual.
+  // Press and move sideways: SILroom changes the column width instead (as in SILVER CRAFT).
+  const handleFoldPointerDown = (event) => {
+    if (!settings.enabled || event.button !== 0 || !event.isPrimary) {
+      return;
+    }
+    const button = event.target.closest?.("button[data-silroom-fold]");
+    if (!button) {
+      return;
+    }
+
+    const side = button.dataset.silroomFold;
+    foldPress = {
+      side,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startWidth:
+        side === "left"
+          ? getPanelWidthValue()
+          : document.querySelector(SELECTORS.subContent)?.getBoundingClientRect().width || NATIVE_FOLD.overviewMinWidth,
+      closed: button.dataset.silroomFoldState === "closed",
+      moved: false,
+      resizing: false,
+    };
+    window.addEventListener("pointermove", handleFoldPointerMove, true);
+    window.addEventListener("pointerup", handleFoldPointerUp, true);
+    window.addEventListener("pointercancel", handleFoldPointerUp, true);
+  };
+
+  const handleFoldPointerMove = (event) => {
+    if (!foldPress || event.pointerId !== foldPress.pointerId) {
+      return;
+    }
+
+    const deltaX = event.clientX - foldPress.startX;
+    if (!foldPress.moved) {
+      if (Math.abs(deltaX) <= NATIVE_FOLD.dragThreshold) {
+        return;
+      }
+      foldPress.moved = true;
+      // A closed column only follows a pull in the opening direction.
+      const opensColumn = foldPress.side === "left" ? deltaX > 0 : deltaX < 0;
+      foldPress.resizing = !foldPress.closed || opensColumn;
+      if (foldPress.resizing) {
+        document.documentElement.classList.add(
+          "silroom-fold-resizing",
+          `silroom-fold-resizing--${foldPress.side}`
+        );
+      }
+      if (foldPress.closed && opensColumn) {
+        getFoldButtons()[foldPress.side]?.button.click();
+      }
+    }
+
+    event.preventDefault();
+    if (!foldPress.resizing) {
+      return;
+    }
+
+    if (foldPress.side === "left") {
+      const width = foldPress.closed ? event.clientX - getSpaceRailRight() : foldPress.startWidth + deltaX;
+      settings.panelWidth = Math.round(clamp(width, PANEL_WIDTH.min, PANEL_WIDTH.max));
+      applyStateClasses();
+      return;
+    }
+
+    const mainRight =
+      document.querySelector(SELECTORS.mainContent)?.getBoundingClientRect().right || window.innerWidth;
+    setOverviewWidth(foldPress.closed ? mainRight - event.clientX : foldPress.startWidth - deltaX);
+  };
+
+  const handleFoldPointerUp = (event) => {
+    if (!foldPress || event.pointerId !== foldPress.pointerId) {
+      return;
+    }
+
+    const { side, moved, resizing } = foldPress;
+    stopFoldPress();
+    if (!moved) {
+      return;
+    }
+
+    if (event.type === "pointerup") {
+      suppressNextTrustedClick();
+    }
+    if (!resizing) {
+      return;
+    }
+    if (side === "left") {
+      storage.set({ panelWidth: getPanelWidthValue() }).then(render);
+    }
+    requestChatworkRelayout();
   };
 
   const normalizeText = (value) => String(value || "").replace(/\s+/g, " ").trim();
@@ -798,6 +1223,52 @@
     visit(listArea);
     return map;
   };
+
+  // Chatwork lists each category as a header (role=button with aria-expanded) followed by
+  // a <ul> of its rooms. An open header with its list next to it shows the whole category.
+  // A closed header, or anything unexpected after it, leaves that category unknown.
+  const readNativeCategorySections = (listArea) => {
+    const sections = new Map();
+    if (!listArea) {
+      return sections;
+    }
+
+    listArea.querySelectorAll('[role="button"][aria-expanded]').forEach((header) => {
+      if (!isNativeCategoryButton(header)) {
+        return;
+      }
+      const name = getNativeCategoryName(header);
+      if (!name || isUnclassifiedCategoryText(name)) {
+        return;
+      }
+
+      const section = sections.get(name) || { name, open: false, complete: true, roomIds: new Set() };
+      sections.set(name, section);
+      if (header.getAttribute("aria-expanded") !== "true") {
+        section.complete = false;
+        return;
+      }
+
+      section.open = true;
+      const next = header.nextElementSibling;
+      if (next?.matches?.("ul")) {
+        next.querySelectorAll('li[role="tab"][id]').forEach((row) => section.roomIds.add(String(row.id)));
+      } else if (next && !next.matches?.('[role="button"][aria-expanded]')) {
+        section.complete = false;
+      }
+    });
+
+    return sections;
+  };
+
+  const getReadableNativeCategorySections = (listArea = document.querySelector(SELECTORS.roomListArea)) =>
+    Array.from(readNativeCategorySections(listArea).values()).filter((section) => section.open && section.complete);
+
+  const getNativeCategoryLabelsForRoom = (sections, roomId) =>
+    sections
+      .filter((section) => section.roomIds.has(String(roomId)))
+      .map((section) => section.name)
+      .sort();
 
   const numberFromText = (value) => {
     const match = String(value || "").match(/\d+/);
@@ -1267,6 +1738,7 @@
       })
       .filter((room) => room.id && room.name);
     rememberWorkspaceObservations(rawDomRooms);
+    applyNativeCategoryMembership(listArea);
     const domRooms = dedupeDomRoomsById(rawDomRooms);
 
     const seenIds = new Set(domRooms.map((room) => String(room.id)));
@@ -1547,6 +2019,134 @@
     }
   };
 
+  // Learning above only adds rooms, so a room taken out of a category would stay listed there.
+  // Once the native list has held still, every open category replaces what SILroom remembers
+  // for it, and a SILroom assignment gives way when Chatwork changes that room's categories.
+  const applyNativeCategoryMembership = (listArea) => {
+    const sections = getReadableNativeCategorySections(listArea);
+    const now = Date.now();
+    const signature = sections
+      .map((section) => `${section.name}\t${Array.from(section.roomIds).sort().join(",")}`)
+      .sort()
+      .join("\n");
+
+    if (signature !== nativeSectionSignature) {
+      nativeSectionSignature = signature;
+      nativeSectionStableSince = now;
+    }
+
+    if (!sections.length || !isNativeWorkspaceSignatureStable(now)) {
+      return false;
+    }
+
+    const waited = now - nativeSectionStableSince;
+    if (waited < WORKSPACE_NATIVE_STABLE_MS) {
+      debounceRender(WORKSPACE_NATIVE_STABLE_MS - waited + 80);
+      return false;
+    }
+
+    const manualWorkspaces = { ...(settings.manualWorkspaces || {}) };
+    const manualWorkspaceNative = { ...(settings.manualWorkspaceNative || {}) };
+    const everyManualHasBase = Object.keys(manualWorkspaces).every((roomId) =>
+      Array.isArray(manualWorkspaceNative[roomId])
+    );
+    if (signature === appliedNativeSectionSignature && everyManualHasBase) {
+      return false;
+    }
+    appliedNativeSectionSignature = signature;
+
+    const openNames = new Set(sections.map((section) => section.name));
+    const manualTypes = { ...(settings.manualTypes || {}) };
+    let manualChanged = false;
+    Object.keys(manualWorkspaces).forEach((roomId) => {
+      const current = getNativeCategoryLabelsForRoom(sections, roomId);
+      const base = manualWorkspaceNative[roomId];
+      if (!Array.isArray(base)) {
+        manualWorkspaceNative[roomId] = current;
+        manualChanged = true;
+        return;
+      }
+      const comparableBase = base.filter((name) => openNames.has(name)).sort();
+      if (comparableBase.join("\n") !== current.join("\n")) {
+        // The menu sets "room" together with a workspace or 未分類, so both go back to automatic.
+        delete manualWorkspaces[roomId];
+        delete manualWorkspaceNative[roomId];
+        if (manualTypes[roomId] === "room") {
+          delete manualTypes[roomId];
+        }
+        manualChanged = true;
+      }
+    });
+    Object.keys(manualWorkspaceNative).forEach((roomId) => {
+      if (!manualWorkspaces[roomId]) {
+        delete manualWorkspaceNative[roomId];
+        manualChanged = true;
+      }
+    });
+    if (manualChanged) {
+      settings = { ...settings, manualTypes, manualWorkspaces, manualWorkspaceNative };
+      storage.set({ manualTypes, manualWorkspaces, manualWorkspaceNative });
+    }
+
+    workspaceState.roomWorkspace = workspaceState.roomWorkspace || {};
+    workspaceState.roomSnapshots = workspaceState.roomSnapshots || {};
+    workspaceState.workspaceRooms = workspaceState.workspaceRooms || {};
+    let stateChanged = false;
+
+    sections.forEach((section) => {
+      const label = section.name;
+      const keepIds = new Set(section.roomIds);
+      Object.entries(manualWorkspaces).forEach(([roomId, workspaceName]) => {
+        if (workspaceName === label) {
+          keepIds.add(String(roomId));
+        }
+      });
+
+      const entry = workspaceState.workspaceRooms[label];
+      if (entry) {
+        const before = (entry.roomIds || []).map(String);
+        const after = before.filter((id) => keepIds.has(id));
+        section.roomIds.forEach((id) => {
+          if (!after.includes(id)) {
+            after.push(id);
+          }
+        });
+        if (after.length !== before.length || after.some((id, index) => id !== before[index])) {
+          stateChanged = true;
+          if (after.length) {
+            workspaceState.workspaceRooms[label] = { roomIds: after, updatedAt: now };
+          } else {
+            delete workspaceState.workspaceRooms[label];
+          }
+        }
+      }
+
+      Object.entries(workspaceState.roomWorkspace).forEach(([roomId, mapped]) => {
+        if (mapped?.workspace === label && !keepIds.has(String(roomId))) {
+          delete workspaceState.roomWorkspace[roomId];
+          stateChanged = true;
+        }
+      });
+
+      Object.entries(workspaceState.roomSnapshots).forEach(([roomId, snapshot]) => {
+        if (snapshot?.workspace === label && !keepIds.has(String(roomId))) {
+          workspaceState.roomSnapshots[roomId] = {
+            ...snapshot,
+            workspace: getNativeCategoryLabelsForRoom(sections, roomId)[0] || "",
+          };
+          stateChanged = true;
+        }
+      });
+    });
+
+    if (stateChanged) {
+      workspaceState.updatedAt = now;
+      scheduleWorkspaceStatePersist();
+    }
+
+    return stateChanged || manualChanged;
+  };
+
   const getKnownWorkspaceNames = (categoryNames = []) => {
     const learnedNames = Object.keys(workspaceState.workspaceRooms || {});
     const mappedNames = Object.values(workspaceState.roomWorkspace || {})
@@ -1809,7 +2409,7 @@
   const isWorkspaceSpace = (spaceKey) => spaceKey?.startsWith("workspace:");
   const isNativeBookmarkSpace = (spaceKey) => spaceKey === "bookmark";
   const isAttentionSpace = (spaceKey) => spaceKey === "attention";
-  const isPanelCollapsed = () => settings.panelCollapsed || isNativeBookmarkSpace(settings.selectedSpace);
+  const isPanelCollapsed = () => isNativeListFolded() || isNativeBookmarkSpace(settings.selectedSpace);
   const usesQuickFilter = (spaceKey) => !isAttentionSpace(spaceKey) && !isNativeBookmarkSpace(spaceKey);
 
   const getRoomsForSpace = (spaceKey) => {
@@ -2076,7 +2676,7 @@
     }
 
     if (space.icon) {
-      return h("img", { class: "silroom-railIconImage", src: assetUrl(`assets/icons/${space.icon}`), alt: "" });
+      return h("img", { class: "silroom-railIconImage is-builtin", src: assetUrl(`assets/icons/${space.icon}`), alt: "" });
     }
 
     return h("span", { class: "silroom-railIconText", text: space.short });
@@ -2388,17 +2988,6 @@
   const renderRoomRail = (visibleRooms, currentSpace) =>
     h("div", { class: "silroom-roomRail", ariaLabel: "SILroom compact room list" }, [
       h("div", { class: "silroom-roomRailHeader" }, [
-        h(
-          "button",
-          {
-            class: "silroom-iconButton silroom-panelExpandButton",
-            type: "button",
-            title: "チャット一覧を固定表示",
-            ariaLabel: "チャット一覧を固定表示",
-            dataAction: "toggle-panel-collapsed",
-          },
-          ["›"]
-        ),
         currentSpace
           ? h("div", { class: "silroom-roomRailSpace", title: currentSpace.label, ariaHidden: "true" }, [
               renderSpaceIcon(currentSpace),
@@ -2436,6 +3025,108 @@
     };
   };
 
+  const renderHeaderIcon = (name) => {
+    const svg = document.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("class", "silroom-headerIcon");
+    svg.setAttribute("viewBox", "0 0 16 16");
+    svg.setAttribute("aria-hidden", "true");
+
+    if (name === "plus") {
+      const path = document.createElementNS(SVG_NS, "path");
+      path.setAttribute("d", "M8 3.25v9.5M3.25 8h9.5");
+      path.setAttribute("fill", "none");
+      path.setAttribute("stroke", "currentColor");
+      path.setAttribute("stroke-width", "1.8");
+      path.setAttribute("stroke-linecap", "round");
+      svg.append(path);
+      return svg;
+    }
+
+    [3.5, 8, 12.5].forEach((cx) => {
+      const dot = document.createElementNS(SVG_NS, "circle");
+      dot.setAttribute("cx", String(cx));
+      dot.setAttribute("cy", "8");
+      dot.setAttribute("r", "1.4");
+      dot.setAttribute("fill", "currentColor");
+      svg.append(dot);
+    });
+    return svg;
+  };
+
+  const renderPanelActions = (currentSpace) => {
+    const categoryLabel =
+      currentSpace?.kind === "workspace" && findNativeCategoryHeader(currentSpace.label) ? currentSpace.label : "";
+    const canCreate = Boolean(document.querySelector(NATIVE_MENUS.createButtonSelector));
+    if (!categoryLabel && !canCreate) {
+      return null;
+    }
+
+    return h("div", { class: "silroom-panelActions" }, [
+      categoryLabel
+        ? h(
+            "button",
+            {
+              class: "silroom-headerButton",
+              type: "button",
+              title: "カテゴリーの編集・削除",
+              ariaLabel: "カテゴリーの編集・削除",
+              ariaHaspopup: "menu",
+              ariaExpanded: categoryMenuState.label === categoryLabel ? "true" : "false",
+              dataAction: "open-category-menu",
+              dataWorkspace: categoryLabel,
+            },
+            [renderHeaderIcon("more")]
+          )
+        : null,
+      canCreate
+        ? h(
+            "button",
+            {
+              class: "silroom-headerButton",
+              type: "button",
+              title: "追加",
+              ariaLabel: "追加",
+              ariaHaspopup: "menu",
+              dataAction: "open-create-menu",
+            },
+            [renderHeaderIcon("plus")]
+          )
+        : null,
+    ]);
+  };
+
+  const renderCategoryMenu = () => {
+    if (!categoryMenuState.label) {
+      return null;
+    }
+
+    const viewportWidth = document.documentElement.clientWidth || window.innerWidth || 1280;
+    const left = clamp(categoryMenuState.x, 8, Math.max(8, viewportWidth - 200));
+
+    return h(
+      "div",
+      {
+        class: "silroom-roomMenu is-compact",
+        role: "menu",
+        ariaLabel: "カテゴリーの編集・削除",
+        style: `left: ${left}px; top: ${categoryMenuState.y}px;`,
+      },
+      CATEGORY_COMMANDS.map((command) =>
+        h(
+          "button",
+          {
+            class: "silroom-roomMenuOption",
+            type: "button",
+            role: "menuitem",
+            dataAction: "run-category-command",
+            dataCommand: command.key,
+          },
+          [h("span", { class: "silroom-roomMenuOptionText", text: command.label })]
+        )
+      )
+    );
+  };
+
   const renderPanel = () => {
     const panelCollapsed = isPanelCollapsed();
     const visibleRooms = getVisibleRooms();
@@ -2444,9 +3135,10 @@
       pendingWorkspaceLoad.key === settings.selectedSpace && Date.now() - pendingWorkspaceLoad.startedAt < 2600;
     const showQuickFilter = usesQuickFilter(settings.selectedSpace);
     const emptyCopy = getEmptyCopy(settings.selectedSpace, isPendingWorkspace);
-    const panelToggleTitle = panelCollapsed ? "チャット一覧を固定表示" : "チャット一覧を細バー化";
 
-    return h("section", { class: "silroom-panel", ariaLabel: "SILroom room list" }, [
+    // Keeps the floating list open on the collapsed bar while one of its menus is open.
+    const holdsMenu = Boolean(roomMenuState.roomId || categoryMenuState.label);
+    return h("section", { class: `silroom-panel${holdsMenu ? " is-holding" : ""}`, ariaLabel: "SILroom room list" }, [
       panelCollapsed ? renderRoomRail(visibleRooms, currentSpace) : null,
       h("div", { class: "silroom-panelBody" }, [
         h("header", { class: "silroom-panelHeader" }, [
@@ -2455,17 +3147,7 @@
             h("h2", { class: "silroom-panelTitle", text: currentSpace?.label || "全体" }),
           ]),
           currentSpace?.key === "all" ? renderAllBadgeToggle() : null,
-          h(
-            "button",
-            {
-              class: "silroom-iconButton silroom-panelCollapseButton",
-              type: "button",
-              title: panelToggleTitle,
-              ariaLabel: panelToggleTitle,
-              dataAction: "toggle-panel-collapsed",
-            },
-            [panelCollapsed ? "›" : "‹"]
-          ),
+          renderPanelActions(currentSpace),
         ]),
         showQuickFilter
           ? h("div", { class: "silroom-filterBar" }, [
@@ -2493,22 +3175,6 @@
       ]),
     ]);
   };
-
-  const renderOverviewTab = () =>
-    h(
-      "button",
-      {
-        id: "silroom-overview-tab",
-        class: `silroom-overviewTab${settings.overviewCollapsed ? " is-collapsed" : ""}`,
-        type: "button",
-        title: settings.overviewCollapsed ? "概要欄を開く" : "概要欄を閉じる",
-        ariaLabel: settings.overviewCollapsed ? "概要欄を開く" : "概要欄を閉じる",
-        dataAction: "toggle-overview",
-      },
-      [
-        h("span", { class: "silroom-overviewTabText", text: settings.overviewCollapsed ? "概要" : "閉" }),
-      ]
-    );
 
   const escapeSelector = (value) =>
     globalThis.CSS?.escape ? CSS.escape(String(value)) : String(value).replace(/["\\]/g, "\\$&");
@@ -2587,14 +3253,14 @@
               dataAction: "resize-panel",
             }),
       ]),
-      renderOverviewTab(),
       renderRoomContextMenu(),
+      renderCategoryMenu(),
     ].filter(Boolean);
     root.replaceChildren(...rootChildren);
     restoreRenderState(renderState, nextListKey);
     lastRenderedListKey = nextListKey;
     scheduleFloatingLayerCheck(20);
-    window.requestAnimationFrame(syncOverviewTabPosition);
+    scheduleNativeFoldSync();
   };
 
   const selectRoom = (roomId) => {
@@ -2638,6 +3304,12 @@
     const workspaceLabel = spaceKey.replace("workspace:", "");
     const nativeButton = findNativeCategoryButton(workspaceLabel);
     if (!nativeButton) {
+      return false;
+    }
+
+    // In the grouped list every category's rooms are already on the page, and clicking a
+    // header only opens or closes that category.
+    if (nativeButton.hasAttribute("aria-expanded")) {
       return false;
     }
 
@@ -2801,8 +3473,40 @@
       return;
     }
 
+    categoryMenuState = { label: "", x: 0, y: 0 };
     roomMenuState = { roomId, x, y };
     render();
+  };
+
+  const closeCategoryMenu = (shouldRender = true) => {
+    if (!categoryMenuState.label) {
+      return;
+    }
+
+    categoryMenuState = { label: "", x: 0, y: 0 };
+    if (shouldRender) {
+      render();
+    }
+  };
+
+  const closeSilroomMenus = () => {
+    if (!roomMenuState.roomId && !categoryMenuState.label) {
+      return;
+    }
+
+    closeRoomMenu(false);
+    closeCategoryMenu(false);
+    render();
+  };
+
+  const handleMenuPointerDown = (event) => {
+    const target = event.target;
+    nativeCreateMenuOpenAtPress = Boolean(
+      target?.closest?.('[data-action="open-create-menu"]') && getOpenNativeCreateMenu()
+    );
+    if (target instanceof Node && !getRoot().contains(target)) {
+      closeSilroomMenus();
+    }
   };
 
   const assignRoomCategory = async (roomId, category) => {
@@ -2814,9 +3518,11 @@
 
     const manualTypes = { ...(settings.manualTypes || {}) };
     const manualWorkspaces = { ...(settings.manualWorkspaces || {}) };
+    const manualWorkspaceNative = { ...(settings.manualWorkspaceNative || {}) };
 
     delete manualTypes[roomId];
     delete manualWorkspaces[roomId];
+    delete manualWorkspaceNative[roomId];
 
     if (category === "dm") {
       manualTypes[roomId] = "dm";
@@ -2834,8 +3540,15 @@
       }
     }
 
+    // Remember Chatwork's categories for the room at this moment, so a later change on the
+    // Chatwork side can take over from this assignment.
+    if (manualWorkspaces[roomId]) {
+      manualWorkspaceNative[roomId] = getNativeCategoryLabelsForRoom(getReadableNativeCategorySections(), roomId);
+    }
+    appliedNativeSectionSignature = "";
+
     closeRoomMenu(false);
-    await storage.set({ manualTypes, manualWorkspaces });
+    await storage.set({ manualTypes, manualWorkspaces, manualWorkspaceNative });
     render();
   };
 
@@ -2894,15 +3607,56 @@
     const actionNode = event.target.closest("[data-action]");
 
     if (!actionNode || !getRoot().contains(actionNode)) {
-      if (roomMenuState.roomId && getRoot().contains(event.target)) {
-        closeRoomMenu();
+      if (getRoot().contains(event.target)) {
+        closeSilroomMenus();
       }
       return;
     }
 
     const { action } = actionNode.dataset;
+    const hadSilroomMenu = Boolean(roomMenuState.roomId || categoryMenuState.label);
     if (roomMenuState.roomId && action !== "open-room-menu" && action !== "assign-room-category") {
       closeRoomMenu(false);
+    }
+    if (categoryMenuState.label && action !== "open-category-menu" && action !== "run-category-command") {
+      closeCategoryMenu(false);
+    }
+
+    if (action === "open-create-menu") {
+      event.stopPropagation();
+      const wasOpen = nativeCreateMenuOpenAtPress;
+      nativeCreateMenuOpenAtPress = false;
+      if (wasOpen) {
+        closeNativeCreateMenu();
+      } else {
+        openNativeCreateMenu(actionNode);
+      }
+      if (hadSilroomMenu) {
+        render();
+      }
+      return;
+    }
+
+    if (action === "open-category-menu") {
+      event.stopPropagation();
+      const label = actionNode.dataset.workspace || "";
+      if (categoryMenuState.label === label) {
+        closeCategoryMenu();
+        return;
+      }
+      const rect = actionNode.getBoundingClientRect();
+      closeRoomMenu(false);
+      categoryMenuState = { label, x: rect.left, y: rect.bottom + NATIVE_MENUS.gap };
+      render();
+      return;
+    }
+
+    if (action === "run-category-command") {
+      event.stopPropagation();
+      const label = categoryMenuState.label;
+      closeCategoryMenu();
+      await runNativeCategoryCommand(label, actionNode.dataset.command);
+      return;
     }
 
     if (action === "select-space" && Date.now() < suppressRailClickUntil) {
@@ -2923,18 +3677,6 @@
 
     if (action === "quick-filter") {
       await storage.set({ quickFilter: actionNode.dataset.filter });
-      render();
-      return;
-    }
-
-    if (action === "toggle-overview") {
-      await storage.set({ overviewCollapsed: !settings.overviewCollapsed });
-      render();
-      return;
-    }
-
-    if (action === "toggle-panel-collapsed") {
-      await storage.set({ panelCollapsed: !settings.panelCollapsed });
       render();
       return;
     }
@@ -3283,7 +4025,7 @@
     document.removeEventListener("mouseup", handlePanelResizeEnd);
     panelResizeState = null;
 
-    await storage.set({ panelWidth: getPanelWidthValue(), panelCollapsed: false });
+    await storage.set({ panelWidth: getPanelWidthValue() });
     render();
   };
 
@@ -3329,9 +4071,9 @@
   };
 
   const handleKeydown = (event) => {
-    if (event.key === "Escape" && roomMenuState.roomId) {
+    if (event.key === "Escape" && (roomMenuState.roomId || categoryMenuState.label)) {
       event.preventDefault();
-      closeRoomMenu();
+      closeSilroomMenus();
       return;
     }
 
@@ -3442,6 +4184,7 @@
 
       if (!onlySilroomChanged) {
         scheduleFloatingLayerCheck();
+        scheduleNativeFoldSync();
       }
     });
 
@@ -3511,10 +4254,9 @@
       scheduleFloatingLayerCheck(20);
       scheduleRoomReadConfirmation(getCurrentRid());
     });
-    window.addEventListener("resize", () => {
-      scheduleFloatingLayerCheck(120);
-      syncOverviewTabPosition();
-    });
+    window.addEventListener("resize", () => scheduleFloatingLayerCheck(120));
+    document.addEventListener("pointerdown", handleFoldPointerDown, true);
+    document.addEventListener("pointerdown", handleMenuPointerDown, true);
     window.addEventListener("focus", () => scheduleInteractiveApiRefresh(250));
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") {

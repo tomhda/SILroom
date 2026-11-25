@@ -25,10 +25,18 @@
 
       <label class="popup__switch">
         <span>
-          <strong>概要欄を閉じる</strong>
-          <small>本文エリアを広く使う</small>
+          <strong>記法ボタン</strong>
+          <small>入力欄に info・title・code・hr を挿入</small>
         </span>
-        <input id="overviewCollapsed" type="checkbox">
+        <input id="composerTags" type="checkbox">
+      </label>
+
+      <label class="popup__switch">
+        <span>
+          <strong>Chatwork AI を隠す</strong>
+          <small>概要欄の上にある Chatwork AI の欄</small>
+        </span>
+        <input id="hideChatworkAi" type="checkbox">
       </label>
 
       <section class="popup__section popup__api">
@@ -91,7 +99,7 @@
         </div>
       </section>
 
-      <p class="popup__note">送信・編集・タスク作成には触れません。</p>
+      <p class="popup__note">送信・タスク作成には触れません。</p>
     </main>
     <script src="popup.js"></script>
   </body>
